@@ -159,6 +159,48 @@
   }
   .step-item.active:not(.done)::before { color: var(--gold); }
 
+  /* ── 專案管理 ── */
+  .project-section { border-bottom: 1px solid var(--border); padding-bottom: 0.8rem; }
+  .sidebar-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .proj-new-btn {
+    width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--gold);
+    background: none; color: var(--gold); font-size: 1.1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+    transition: all 0.2s;
+  }
+  .proj-new-btn:hover { background: var(--gold); color: var(--ink); }
+  .project-list { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .project-item {
+    display: flex; align-items: center; gap: 4px; padding: 0.35rem 0.5rem;
+    border-radius: 5px; cursor: pointer; font-size: 0.78rem; color: #666;
+    transition: background 0.15s; border: 1px solid transparent;
+  }
+  .project-item:hover { background: rgba(201,168,76,0.08); }
+  .project-item.active { background: rgba(201,168,76,0.15); border-color: var(--gold); color: var(--ink); font-weight: 600; }
+  .project-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-item-phase { font-size: 0.65rem; background: var(--gold); color: var(--ink); padding: 1px 4px; border-radius: 3px; font-weight: 700; flex-shrink: 0; }
+  .project-item-del { opacity: 0; font-size: 0.75rem; color: #999; cursor: pointer; flex-shrink: 0; padding: 0 2px; }
+  .project-item:hover .project-item-del { opacity: 1; }
+  .project-item-del:hover { color: #e53935; }
+  .proj-actions { display: flex; gap: 5px; }
+  .proj-io-btn {
+    flex: 1; text-align: center; padding: 0.3rem; border: 1px solid var(--border);
+    border-radius: 5px; font-size: 0.72rem; color: #888; cursor: pointer;
+    background: none; transition: all 0.2s;
+  }
+  .proj-io-btn:hover { border-color: var(--gold); color: var(--ink); }
+
+  /* ── 輸出計畫書按鈕 ── */
+  .export-doc-btn {
+    width: 100%; margin-top: 0.7rem; padding: 0.6rem;
+    background: linear-gradient(135deg, var(--gold), var(--rust));
+    color: var(--ink); border: none; border-radius: 7px;
+    font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    transition: opacity 0.2s; display: none;
+  }
+  .export-doc-btn:hover { opacity: 0.88; }
+  .export-doc-btn.visible { display: block; }
+
   .sidebar-footer {
     margin-top: auto;
     padding: 1rem;
@@ -765,6 +807,19 @@
 <div class="app">
   <!-- SIDEBAR -->
   <aside class="sidebar">
+    <!-- 專案管理區塊 -->
+    <div class="sidebar-section project-section">
+      <div class="sidebar-label-row">
+        <div class="sidebar-label">📁 我的專案</div>
+        <button class="proj-new-btn" onclick="createNewProject()" title="新增專案">＋</button>
+      </div>
+      <ul class="project-list" id="projectList"></ul>
+      <div class="proj-actions">
+        <button class="proj-io-btn" onclick="exportProject()" title="匯出目前專案為 JSON">⬇ 匯出</button>
+        <label class="proj-io-btn" title="從 JSON 匯入專案">⬆ 匯入<input type="file" accept=".json" style="display:none" onchange="importProject(event)"></label>
+      </div>
+    </div>
+
     <div class="sidebar-section">
       <div class="sidebar-label">申請階段</div>
       <button class="phase-btn" data-phase="1" onclick="selectPhase(1)">
@@ -793,6 +848,9 @@
           <div class="progress-fill" id="progressFill" style="width:0%"></div>
         </div>
       </div>
+      <button class="export-doc-btn" id="exportDocBtn" onclick="exportToDocx()">
+        📄 輸出 SBIR 計畫書 (.docx)
+      </button>
     </div>
   </aside>
 
@@ -920,6 +978,226 @@
 </div>
 
 <script>
+// ══════════════════════════════════════════
+// ── PROJECT MANAGEMENT ──
+// ══════════════════════════════════════════
+const PROJECTS_KEY = 'sbir_projects';
+const ACTIVE_PROJECT_KEY = 'sbir_active_project';
+
+function loadProjects() {
+  try { return JSON.parse(localStorage.getItem(PROJECTS_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveProjects(projects) {
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+}
+
+function getActiveProjectId() {
+  return localStorage.getItem(ACTIVE_PROJECT_KEY) || null;
+}
+
+function setActiveProjectId(id) {
+  localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+}
+
+function generateProjectId() {
+  return 'proj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+}
+
+function createNewProject() {
+  const name = prompt('請輸入專案名稱（例如：AI智慧檢測系統）：');
+  if (!name || !name.trim()) return;
+
+  const id = generateProjectId();
+  const project = {
+    id,
+    name: name.trim(),
+    phase: null,
+    answers: {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  const projects = loadProjects();
+  projects.unshift(project);
+  saveProjects(projects);
+  switchProject(id);
+}
+
+function switchProject(id) {
+  // 先儲存目前狀態
+  saveCurrentProjectState();
+
+  setActiveProjectId(id);
+  const projects = loadProjects();
+  const project = projects.find(p => p.id === id);
+  if (!project) return;
+
+  // 載入專案狀態到 state
+  state.phase = project.phase;
+  state.answers = { ...(project.answers || {}) };
+  state.currentStep = project.currentStep || 0;
+
+  // 更新 UI
+  renderProjectList();
+  updateSidebarPhase();
+
+  if (project.phase) {
+    document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('stepHeader').style.display = 'block';
+    document.getElementById('navRow').style.display = 'flex';
+    document.getElementById('stepsSection').style.display = 'block';
+    renderStepList();
+    renderStep();
+  } else {
+    // 新專案，回到歡迎畫面
+    document.getElementById('welcomeScreen').style.display = 'flex';
+    document.getElementById('stepHeader').style.display = 'none';
+    document.getElementById('navRow').style.display = 'none';
+    document.getElementById('stepsSection').style.display = 'none';
+  }
+  updateProgress();
+}
+
+function saveCurrentProjectState() {
+  const id = getActiveProjectId();
+  if (!id) return;
+  const projects = loadProjects();
+  const idx = projects.findIndex(p => p.id === id);
+  if (idx === -1) return;
+
+  projects[idx].phase = state.phase;
+  projects[idx].answers = { ...state.answers };
+  projects[idx].currentStep = state.currentStep;
+  projects[idx].updatedAt = new Date().toISOString();
+  if (state.phase) {
+    const phaseLabels = { 1: 'P1', 2: 'P2', 3: 'P2+' };
+    projects[idx].phaseLabel = phaseLabels[state.phase];
+  }
+  saveProjects(projects);
+}
+
+function deleteProject(id, event) {
+  event.stopPropagation();
+  const projects = loadProjects();
+  const project = projects.find(p => p.id === id);
+  if (!project) return;
+  if (!confirm(`確定要刪除「${project.name}」嗎？此操作無法復原。`)) return;
+
+  const filtered = projects.filter(p => p.id !== id);
+  saveProjects(filtered);
+
+  if (getActiveProjectId() === id) {
+    if (filtered.length > 0) {
+      switchProject(filtered[0].id);
+    } else {
+      localStorage.removeItem(ACTIVE_PROJECT_KEY);
+      state.phase = null;
+      state.answers = {};
+      state.currentStep = 0;
+      renderProjectList();
+      document.getElementById('welcomeScreen').style.display = 'flex';
+      document.getElementById('stepHeader').style.display = 'none';
+      document.getElementById('navRow').style.display = 'none';
+      document.getElementById('stepsSection').style.display = 'none';
+    }
+  } else {
+    renderProjectList();
+  }
+}
+
+function renderProjectList() {
+  const projects = loadProjects();
+  const activeId = getActiveProjectId();
+  const list = document.getElementById('projectList');
+
+  if (projects.length === 0) {
+    list.innerHTML = '<li style="font-size:0.75rem;color:#aaa;padding:0.3rem 0.5rem;">尚無專案，點 ＋ 新增</li>';
+    return;
+  }
+
+  list.innerHTML = projects.map(p => `
+    <li class="project-item ${p.id === activeId ? 'active' : ''}" onclick="switchProject('${p.id}')">
+      ${p.phaseLabel ? `<span class="project-item-phase">${p.phaseLabel}</span>` : ''}
+      <span class="project-item-name" title="${p.name}">${p.name}</span>
+      <span class="project-item-del" onclick="deleteProject('${p.id}', event)" title="刪除">✕</span>
+    </li>
+  `).join('');
+}
+
+function renameCurrentProject() {
+  const id = getActiveProjectId();
+  if (!id) return;
+  const projects = loadProjects();
+  const project = projects.find(p => p.id === id);
+  if (!project) return;
+  const newName = prompt('重新命名專案：', project.name);
+  if (!newName || !newName.trim()) return;
+  project.name = newName.trim();
+  saveProjects(projects);
+  renderProjectList();
+}
+
+function exportProject() {
+  saveCurrentProjectState();
+  const id = getActiveProjectId();
+  if (!id) { alert('請先選擇或建立一個專案。'); return; }
+  const projects = loadProjects();
+  const project = projects.find(p => p.id === id);
+  if (!project) return;
+
+  const json = JSON.stringify(project, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `SBIR_${project.name}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importProject(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const project = JSON.parse(e.target.result);
+      if (!project.id || !project.name) throw new Error('格式不符');
+
+      // 避免 ID 衝突，重新產生 ID
+      project.id = generateProjectId();
+      project.name = project.name + '（匯入）';
+      project.updatedAt = new Date().toISOString();
+
+      const projects = loadProjects();
+      projects.unshift(project);
+      saveProjects(projects);
+      switchProject(project.id);
+      alert(`已成功匯入專案「${project.name}」`);
+    } catch {
+      alert('匯入失敗，請確認檔案格式正確（需為本工具匯出的 JSON 檔案）。');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = ''; // 重置 input
+}
+
+function initProjects() {
+  const projects = loadProjects();
+  renderProjectList();
+
+  // 自動切換到上次的專案
+  const activeId = getActiveProjectId();
+  if (activeId && projects.find(p => p.id === activeId)) {
+    switchProject(activeId);
+  } else if (projects.length > 0) {
+    switchProject(projects[0].id);
+  }
+  // 否則顯示歡迎畫面等待使用者新增專案
+}
+
 // ── STATE ──
 const state = {
   phase: null,
@@ -1242,10 +1520,24 @@ function saveApiKey() {
 // ── 初始化 UI ──
 function initApiKeyUI() {
   const provider = getProvider();
-  switchProvider(provider); // 還原供應商、模型、Key
+  switchProvider(provider);
 }
 
-window.addEventListener('DOMContentLoaded', initApiKeyUI);
+function updateSidebarPhase() {
+  if (!state.phase) return;
+  const names = {1:'Phase 1 先期研究', 2:'Phase 2 研究開發', 3:'Phase 2+ 加值應用'};
+  document.querySelectorAll('.phase-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.phase) === state.phase);
+  });
+  const indicator = document.getElementById('phaseIndicator');
+  if (indicator) indicator.textContent = names[state.phase];
+  document.getElementById('stepsSection').style.display = 'block';
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  initApiKeyUI();
+  initProjects();
+});
 
 // ── AI 面板：無 Key 警告 ──
 function renderAiKeyWarning() {
@@ -1899,14 +2191,29 @@ function selectPhaseCard(p) {
 }
 
 function selectPhase(p, fromCard=false) {
+  // 若專案已有不同的 phase，警示使用者
+  if (state.phase && state.phase !== p) {
+    if (!confirm('切換申請階段將會重置目前的填寫進度，確定要切換嗎？')) return;
+    state.answers = {};
+  }
   state.phase = p;
   document.querySelectorAll('.phase-btn').forEach(b => {
     b.classList.toggle('active', parseInt(b.dataset.phase) === p);
   });
   const names = {1:'Phase 1 先期研究', 2:'Phase 2 研究開發', 3:'Phase 2+ 加值應用'};
+  const phaseLabels = {1:'P1', 2:'P2', 3:'P2+'};
   document.getElementById('phaseIndicator').textContent = names[p];
   document.getElementById('stepsSection').style.display = 'block';
+
+  // 更新專案 phase label
+  const id = getActiveProjectId();
+  if (id) {
+    const projects = loadProjects();
+    const proj = projects.find(p2 => p2.id === id);
+    if (proj) { proj.phaseLabel = phaseLabels[p]; saveProjects(projects); }
+  }
   renderStepList();
+  renderProjectList();
   if (!fromCard) {
     startWriting();
   }
@@ -1918,6 +2225,7 @@ function startWriting() {
   document.getElementById('stepHeader').style.display = 'block';
   document.getElementById('navRow').style.display = 'flex';
   state.currentStep = 0;
+  saveCurrentProjectState();
   renderStep();
 }
 
@@ -1939,6 +2247,13 @@ function updateProgress() {
   document.getElementById('progressPct').textContent = pct + '%';
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('stepCounter').textContent = `步驟 ${state.currentStep+1} / ${steps.length}`;
+
+  // 顯示輸出按鈕（所有步驟都完成時）
+  const exportBtn = document.getElementById('exportDocBtn');
+  if (exportBtn) {
+    const allDone = steps.every(s => state.answers['_done_'+s.id]);
+    exportBtn.classList.toggle('visible', allDone || done >= steps.length - 1);
+  }
 }
 
 function renderStep() {
@@ -1986,27 +2301,30 @@ function restoreAnswers() {
 
 function saveAnswer(key, value) {
   state.answers[key] = value;
+  saveCurrentProjectState();
 }
 
 function goToStep(i) {
   state.currentStep = i;
+  saveCurrentProjectState();
   renderStep();
 }
 
 function prevStep() {
-  if (state.currentStep > 0) { state.currentStep--; renderStep(); }
+  if (state.currentStep > 0) { state.currentStep--; saveCurrentProjectState(); renderStep(); }
 }
 
 function nextStep() {
   const steps = STEPS[state.phase];
   const step = steps[state.currentStep];
   state.answers['_done_' + step.id] = true;
-  if (state.currentStep < steps.length - 1) { state.currentStep++; renderStep(); }
+  if (state.currentStep < steps.length - 1) { state.currentStep++; saveCurrentProjectState(); renderStep(); }
 }
 
 function finishPlan() {
   const steps = STEPS[state.phase];
   state.answers['_done_' + steps[state.currentStep].id] = true;
+  saveCurrentProjectState();
   renderStepList();
   showFinished();
 }
@@ -2203,6 +2521,271 @@ function copyText(id) {
     navigator.clipboard.writeText(el.textContent);
     event.target.textContent = '已複製！';
     setTimeout(() => event.target.textContent = '複製', 1500);
+  }
+}
+
+// ══════════════════════════════════════════
+// ── DOCX EXPORT ──
+// ══════════════════════════════════════════
+async function exportToDocx() {
+  const btn = document.getElementById('exportDocBtn');
+  btn.textContent = '⏳ 產生中...';
+  btn.disabled = true;
+
+  try {
+    // 動態載入 docx.js
+    if (!window.docx) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel,
+            AlignmentType, BorderStyle, Table, TableRow, TableCell,
+            WidthType, ShadingType, PageNumber, Footer } = window.docx;
+
+    const a = state.answers;
+    const phase = state.phase;
+    const phaseName = {1:'先期研究(Phase 1)', 2:'研究開發(Phase 2)', 3:'加值應用(Phase 2+)'}[phase];
+    const T = (text, opts={}) => new TextRun({ text: String(text || ''), ...opts });
+    const EMPTY = '[待填寫]';
+    const v = (key) => (a[key] && String(a[key]).trim()) ? a[key] : EMPTY;
+
+    // ── 輔助：正文段落 ──
+    const bodyPara = (text, opts={}) => new Paragraph({
+      children: [T(text)],
+      spacing: { after: 160 },
+      ...opts
+    });
+
+    // ── 輔助：標題 ──
+    const h1 = (text) => new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [T(text, { bold: true })],
+      spacing: { before: 400, after: 200 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'C9A84C', space: 4 } }
+    });
+    const h2 = (text) => new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      children: [T(text, { bold: true })],
+      spacing: { before: 280, after: 140 },
+    });
+    const h3 = (text) => new Paragraph({
+      children: [T(text, { bold: true, underline: {} })],
+      spacing: { before: 200, after: 100 },
+    });
+
+    // ── 輔助：標籤＋內容行 ──
+    const labelLine = (label, value) => new Paragraph({
+      children: [
+        T(label + '：', { bold: true }),
+        T(value || EMPTY, value ? {} : { color: 'E53935' })
+      ],
+      spacing: { after: 120 }
+    });
+
+    // ── 封面 ──
+    const coverChildren = [
+      new Paragraph({ children: [T('限  閱', { bold: true, size: 20, color: '888888' })], alignment: AlignmentType.RIGHT }),
+      new Paragraph({ text: '', spacing: { after: 800 } }),
+      new Paragraph({ children: [T('附件A', { bold: true, size: 24 })], alignment: AlignmentType.CENTER }),
+      new Paragraph({ text: '' }),
+      new Paragraph({ children: [T('小型企業創新研發計畫', { bold: true, size: 36 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
+      new Paragraph({ children: [T('■ ' + phaseName, { bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
+      new Paragraph({ children: [T('＜' + v('projectName') + '＞', { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
+      labelLine('計畫期間', v('projectPeriod')),
+      labelLine('公司名稱', v('companyName')),
+      new Paragraph({ text: '' }),
+      new Paragraph({ children: [T('計畫管理單位：財團法人中衛發展中心')], spacing: { after: 80 } }),
+      new Paragraph({ children: [T('計畫主辦單位：經濟部中小及新創企業署')], spacing: { after: 400 } }),
+      new Paragraph({ children: [T('中 華 民 國　　年　　月')], alignment: AlignmentType.CENTER }),
+    ];
+
+    // ── 計畫申請表 ──
+    const applicationChildren = [
+      h1('計畫申請表'),
+      h2('一、申請計畫基本資料'),
+      labelLine('計畫名稱', v('projectName')),
+      labelLine('計畫期間', v('projectPeriod')),
+      labelLine('公司名稱', v('companyName')),
+      labelLine('通訊地址', v('companyAddress')),
+      labelLine('計畫主持人', v('piName')),
+      labelLine('聯絡電話', v('piPhone')),
+      labelLine('電子信箱', v('piEmail')),
+      labelLine('計畫總經費', v('totalBudget') + ' 千元'),
+      labelLine('補助款', v('subsidyAmount') + ' 千元'),
+      labelLine('自籌款', v('selfFundAmount') + ' 千元'),
+      new Paragraph({ text: '' }),
+      h2('五、主要關鍵核心技術'),
+      bodyPara(v('coretech')),
+    ];
+
+    // ── 公司基本資料 ──
+    const companyChildren = [
+      h1('申請公司基本資料表'),
+      labelLine('公司名稱', v('companyName')),
+      labelLine('創立日期', v('foundedDate')),
+      labelLine('統一編號', v('taxId')),
+      labelLine('負責人', v('ceoName')),
+      labelLine('實收資本額', v('capital') + ' 千元'),
+      labelLine('前一年度營業額', v('revenue') + ' 千元'),
+      labelLine('員工人數', v('employees') + ' 人'),
+      labelLine('主要營業項目', v('bizScope')),
+    ];
+
+    // ── 計畫摘要 ──
+    const summaryChildren = [
+      h1('計畫書摘要表'),
+      h2('計畫內容摘要'),
+      bodyPara(v('abstract') || v('motivation')),
+      h2('計畫創新重點'),
+      bodyPara(v('innovation') || v('innovationPoints')),
+      h2('執行優勢'),
+      bodyPara(v('advantage') || v('teamStrength')),
+      h2('預期效益（結案三年內）'),
+      labelLine('增加產值', v('expectedRevenue') + ' 千元'),
+      labelLine('產出新產品或服務', v('newProducts') + ' 項'),
+      labelLine('投入研發費用', v('rdInvestment') + ' 千元'),
+      labelLine('增加就業人數', v('newEmployees') + ' 人'),
+      labelLine('發明專利', v('patents') + ' 件'),
+    ];
+
+    // ── 貳、計畫內容 ──
+    const contentChildren = [
+      h1('貳、計畫內容與實施方式'),
+      h2('一、研發動機及競爭力分析'),
+      h3('（一）研發動機'),
+      bodyPara(v('motivation') || v('problem')),
+      h3('（二）競爭力分析'),
+      bodyPara(v('competition') || v('competitorAnalysis')),
+      h3('（三）可行性分析'),
+      bodyPara(v('feasibility')),
+      new Paragraph({ text: '' }),
+      h2('二、計畫目標與規格'),
+      h3('（一）計畫目標'),
+      bodyPara(v('goal') || v('projectGoal')),
+      h3('（二）創新性說明'),
+      bodyPara(v('innovation') || v('innovationPoints')),
+      h3('（三）功能規格／服務模式'),
+      bodyPara(v('spec') || v('techSpec')),
+      h3('（四）主要關鍵技術或服務'),
+      bodyPara(v('coretech') || v('keytech')),
+      h3('（五）技術應用範圍'),
+      bodyPara(v('applicationScope') || v('marketScope')),
+      new Paragraph({ text: '' }),
+      h2('三、實施方式'),
+      h3('（一）執行步驟及方法'),
+      bodyPara(v('implementation') || v('method')),
+      h3('（二）技術及智慧財產權來源'),
+      bodyPara(v('ipSource') || v('techSource')),
+      new Paragraph({ text: '' }),
+      h2('五、預期效益'),
+      bodyPara(v('benefit') || v('expectedBenefit')),
+    ];
+
+    // ── 智財分析 ──
+    const ipChildren = [
+      h1('參、智財分析'),
+      bodyPara(v('ipAnalysis') || v('ip')),
+    ];
+
+    // ── 計畫執行與經費 ──
+    const executionChildren = [
+      h1('肆、計畫執行查核點說明與經費需求'),
+      h2('一、預定進度及查核點'),
+      bodyPara(v('milestone') || v('schedule')),
+      new Paragraph({ text: '' }),
+      h2('三、經費需求總表'),
+      labelLine('計畫總經費', v('totalBudget') + ' 千元'),
+      labelLine('補助款（≦50%）', v('subsidyAmount') + ' 千元'),
+      labelLine('自籌款', v('selfFundAmount') + ' 千元'),
+      new Paragraph({ text: '' }),
+      labelLine('人事費（≦60%）', v('personnelCost') + ' 千元'),
+      labelLine('消耗性器材及原材料費', v('materialCost') + ' 千元'),
+      labelLine('設備使用費', v('equipmentCost') + ' 千元'),
+      labelLine('技術移轉及委託費', v('outsourceCost') + ' 千元'),
+      labelLine('差旅費', v('travelCost') + ' 千元'),
+      labelLine('專利申請費', v('patentCost') + ' 千元'),
+      new Paragraph({ text: '' }),
+      h2('二、研發人員'),
+      bodyPara(v('teamMembers') || v('team')),
+    ];
+
+    // ── 組合文件 ──
+    const allChildren = [
+      ...coverChildren,
+      new Paragraph({ pageBreakBefore: true, text: '' }),
+      ...applicationChildren,
+      new Paragraph({ pageBreakBefore: true, text: '' }),
+      ...companyChildren,
+      new Paragraph({ pageBreakBefore: true, text: '' }),
+      ...summaryChildren,
+      new Paragraph({ pageBreakBefore: true, text: '' }),
+      ...contentChildren,
+      new Paragraph({ pageBreakBefore: true, text: '' }),
+      ...ipChildren,
+      new Paragraph({ pageBreakBefore: true, text: '' }),
+      ...executionChildren,
+    ];
+
+    const doc = new Document({
+      styles: {
+        default: {
+          document: { run: { font: '標楷體', size: 24, color: '1A1A1A' } }
+        },
+        paragraphStyles: [
+          { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true,
+            run: { size: 32, bold: true, font: '標楷體', color: '1A1005' },
+            paragraph: { spacing: { before: 400, after: 200 }, outlineLevel: 0 } },
+          { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true,
+            run: { size: 28, bold: true, font: '標楷體', color: '2C2000' },
+            paragraph: { spacing: { before: 280, after: 140 }, outlineLevel: 1 } },
+        ]
+      },
+      sections: [{
+        properties: {
+          page: {
+            size: { width: 11906, height: 16838 }, // A4
+            margin: { top: 1440, right: 1260, bottom: 1440, left: 1260 }
+          }
+        },
+        footers: {
+          default: new Footer({
+            children: [new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [T('第 '), new TextRun({ children: [PageNumber.CURRENT] }), T(' 頁')]
+            })]
+          })
+        },
+        children: allChildren
+      }]
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const projectName = v('projectName') !== EMPTY ? v('projectName') : '未命名計畫';
+    link.download = `SBIR_${phaseName}_${projectName}_${new Date().toISOString().slice(0,10)}.docx`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    btn.textContent = '✅ 已下載！';
+    setTimeout(() => {
+      btn.textContent = '📄 輸出 SBIR 計畫書 (.docx)';
+      btn.disabled = false;
+    }, 2500);
+
+  } catch(e) {
+    console.error(e);
+    alert('輸出失敗：' + e.message);
+    btn.textContent = '📄 輸出 SBIR 計畫書 (.docx)';
+    btn.disabled = false;
   }
 }
 </script>
