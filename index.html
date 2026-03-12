@@ -602,26 +602,46 @@
   .welcome-start-btn:hover { background: var(--gold); color: var(--ink); }
   .welcome-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* ── API Key Box ── */
+  /* ── API Key / Provider Box ── */
   .apikey-box {
-    background: #f9f7f0;
-    border: 1.5px solid #e0d9c8;
-    border-radius: 10px;
-    padding: 1.2rem 1.4rem;
-    margin-bottom: 1.8rem;
-    text-align: left;
+    background: #f9f7f0; border: 1.5px solid #e0d9c8; border-radius: 10px;
+    padding: 1.2rem 1.4rem; margin-bottom: 1.8rem; text-align: left;
   }
   .apikey-box.verified { border-color: #4caf50; background: #f0faf0; }
   .apikey-title { font-weight: 700; font-size: 0.95rem; color: var(--ink); margin-bottom: 0.4rem; }
   .apikey-desc { font-size: 0.82rem; color: #666; line-height: 1.6; margin-bottom: 0.9rem; }
   .apikey-desc a { color: var(--gold); text-decoration: none; }
   .apikey-desc a:hover { text-decoration: underline; }
+
+  /* 供應商 Tab */
+  .provider-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.9rem; flex-wrap: wrap; }
+  .provider-tab {
+    flex: 1; min-width: 100px; padding: 0.5rem 0.6rem; border: 1.5px solid #d0c9b8;
+    border-radius: 7px; background: #fff; color: #888; font-size: 0.82rem;
+    cursor: pointer; transition: all 0.2s; font-weight: 600; display: flex;
+    align-items: center; justify-content: center; gap: 0.3rem;
+  }
+  .provider-tab:hover { border-color: var(--gold); color: var(--ink); }
+  .provider-tab.active { border-color: var(--gold); background: rgba(201,168,76,0.1); color: var(--ink); }
+  .ptab-icon { font-size: 0.9rem; }
+
+  /* 模型選擇 */
+  .model-selector-row { display: flex; align-items: center; gap: 0.7rem; }
+  .model-label { font-size: 0.85rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .model-selector-row select {
+    flex: 1; padding: 0.45rem 0.7rem; border: 1.5px solid #d0c9b8;
+    border-radius: 6px; font-size: 0.83rem; background: #fff;
+    color: var(--ink); cursor: pointer; outline: none; transition: border-color 0.2s;
+  }
+  .model-selector-row select:focus { border-color: var(--gold); }
+  .model-desc { font-size: 0.78rem; color: #888; margin-top: 0.3rem; min-height: 1rem; font-style: italic; }
+
+  /* API Key 輸入 */
   .apikey-row { display: flex; gap: 0.6rem; }
   .apikey-row input {
     flex: 1; padding: 0.55rem 0.8rem; border: 1.5px solid #d0c9b8;
     border-radius: 6px; font-size: 0.88rem; background: #fff;
-    font-family: 'Space Mono', monospace; outline: none;
-    transition: border-color 0.2s;
+    font-family: 'Space Mono', monospace; outline: none; transition: border-color 0.2s;
   }
   .apikey-row input:focus { border-color: var(--gold); }
   .apikey-btn {
@@ -630,9 +650,14 @@
     font-weight: 600; transition: background 0.2s;
   }
   .apikey-btn:hover { background: var(--gold); color: var(--ink); }
-  .apikey-status { font-size: 0.82rem; margin-top: 0.5rem; min-height: 1.2rem; }
+  .apikey-hint { font-size: 0.78rem; color: #999; margin-top: 0.3rem; }
+  .apikey-hint a { color: var(--gold); text-decoration: none; }
+  .apikey-hint a:hover { text-decoration: underline; }
+  .apikey-status { font-size: 0.82rem; margin-top: 0.4rem; min-height: 1.1rem; }
   .apikey-status.ok { color: #4caf50; }
   .apikey-status.err { color: #e53935; }
+
+  /* AI 面板警告 */
   .ai-key-warning {
     background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px;
     padding: 0.9rem 1rem; font-size: 0.83rem; color: #795548;
@@ -790,17 +815,39 @@
             支援 Phase 1、Phase 2、Phase 2+ 三種申請類型。
           </div>
 
-          <!-- API Key 區塊 -->
+          <!-- API Key 區塊（多供應商） -->
           <div class="apikey-box" id="apikeyBox">
-            <div class="apikey-title">🔑 設定 Anthropic API Key</div>
+            <div class="apikey-title">🤖 設定 AI 供應商與模型</div>
             <div class="apikey-desc">
-              AI 輔助功能需要您自己的 Anthropic API Key。Key 僅儲存於您的瀏覽器本機，不會上傳至任何伺服器。<br>
-              沒有 Key？<a href="https://console.anthropic.com/" target="_blank" rel="noopener">前往 console.anthropic.com 免費申請 →</a>
+              選擇您偏好的 AI 供應商，填入對應的 API Key。Key 僅儲存於瀏覽器本機，不會外傳。
             </div>
-            <div class="apikey-row">
-              <input type="password" id="apikeyInput" placeholder="sk-ant-..." autocomplete="off" oninput="onApiKeyInput()" />
+
+            <!-- 供應商選擇 -->
+            <div class="provider-tabs">
+              <button class="provider-tab active" id="tab-anthropic" onclick="switchProvider('anthropic')">
+                <span class="ptab-icon">◆</span> Anthropic Claude
+              </button>
+              <button class="provider-tab" id="tab-openai" onclick="switchProvider('openai')">
+                <span class="ptab-icon">⬡</span> OpenAI GPT
+              </button>
+              <button class="provider-tab" id="tab-google" onclick="switchProvider('google')">
+                <span class="ptab-icon">✦</span> Google Gemini
+              </button>
+            </div>
+
+            <!-- 模型選擇 -->
+            <div class="model-selector-row">
+              <label class="model-label">模型</label>
+              <select id="modelSelect" onchange="onModelChange()"></select>
+            </div>
+            <div class="model-desc" id="modelDesc"></div>
+
+            <!-- API Key 輸入 -->
+            <div class="apikey-row" style="margin-top:0.8rem">
+              <input type="password" id="apikeyInput" placeholder="" autocomplete="off" />
               <button class="apikey-btn" id="apikeyBtn" onclick="saveApiKey()">儲存</button>
             </div>
+            <div class="apikey-hint" id="apikeyHint"></div>
             <div class="apikey-status" id="apikeyStatus"></div>
           </div>
 
@@ -1041,65 +1088,166 @@ const KB = {
   presentationTips: `【簡報技巧黃金法則】黃金30秒開場：數據/故事/問題/願景開場法之一，讓委員立刻知道「為什麼重要」。15分鐘架構：開場1min→問題2min→解方4min→驗證2min→市場2min→團隊2min→總結2min。視覺設計：標題36-44pt/內文24-28pt/每頁≤7行/最多1-2張圖/主色調≤3種。Q&A五大法則：聽完再答、正面回應、簡潔有力、用數據、誠實（不確定可說「這是Phase1要驗證的」）。加分行為：展示實體樣品/Demo、有客戶見證/意向書、坦承限制並說明對策。自備：USB+雲端備份、PDF+PPT兩種格式、簡報筆。`
 };
 
-// ── API KEY MANAGEMENT ──
-const API_KEY_STORAGE = 'sbir_anthropic_key';
+// ══════════════════════════════════════════
+// ── MULTI-PROVIDER LLM CONFIGURATION ──
+// ══════════════════════════════════════════
+const PROVIDERS = {
+  anthropic: {
+    name: 'Anthropic Claude',
+    keyPrefix: 'sk-ant-',
+    placeholder: 'sk-ant-api03-...',
+    hint: '前往 <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> 取得 API Key',
+    models: [
+      { id: 'claude-opus-4-5',            label: 'Claude Opus 4.5',    desc: '最高智能，適合複雜論述；速度較慢，費用約 Sonnet 5 倍' },
+      { id: 'claude-sonnet-4-5',          label: 'Claude Sonnet 4.5 ★', desc: '智能與速度均衡，SBIR 撰寫最推薦', default: true },
+      { id: 'claude-sonnet-3-7-20250219', label: 'Claude Sonnet 3.7',   desc: '具延伸思考能力，推理細膩；速度稍慢' },
+      { id: 'claude-sonnet-3-5-20241022', label: 'Claude Sonnet 3.5',   desc: '快速回應，費用較低，適合大量草稿' },
+      { id: 'claude-haiku-3-5-20241022',  label: 'Claude Haiku 3.5',    desc: '最快、費用最低，適合快速填寫建議' },
+    ]
+  },
+  openai: {
+    name: 'OpenAI GPT',
+    keyPrefix: 'sk-',
+    placeholder: 'sk-proj-...',
+    hint: '前往 <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a> 取得 API Key',
+    models: [
+      { id: 'gpt-4o',       label: 'GPT-4o ★',      desc: '旗艦模型，多模態，均衡推薦', default: true },
+      { id: 'gpt-4o-mini',  label: 'GPT-4o mini',   desc: '快速、費用低，適合大量草稿' },
+      { id: 'o3-mini',      label: 'o3-mini',        desc: '強推理能力，適合邏輯密集段落' },
+      { id: 'gpt-4-turbo',  label: 'GPT-4 Turbo',   desc: '高品質，128k 上下文' },
+    ]
+  },
+  google: {
+    name: 'Google Gemini',
+    keyPrefix: 'AIza',
+    placeholder: 'AIzaSy...',
+    hint: '前往 <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a> 取得 API Key',
+    models: [
+      { id: 'gemini-2.0-flash',        label: 'Gemini 2.0 Flash ★', desc: '最新旗艦，速度快，均衡推薦', default: true },
+      { id: 'gemini-2.0-flash-lite',   label: 'Gemini 2.0 Flash Lite', desc: '更快、費用最低' },
+      { id: 'gemini-1.5-pro',          label: 'Gemini 1.5 Pro',     desc: '100 萬 token 上下文，深度分析' },
+      { id: 'gemini-1.5-flash',        label: 'Gemini 1.5 Flash',   desc: '快速版，費用低' },
+    ]
+  }
+};
 
-function getApiKey() {
-  return localStorage.getItem(API_KEY_STORAGE) || '';
+const PROVIDER_KEY   = 'sbir_provider';
+const MODEL_KEY      = 'sbir_model';
+const API_KEY_PREFIX = 'sbir_apikey_'; // 每個供應商分開儲存
+
+function getProvider()  { return localStorage.getItem(PROVIDER_KEY) || 'anthropic'; }
+function getModel()     { return localStorage.getItem(MODEL_KEY) || PROVIDERS[getProvider()].models.find(m=>m.default)?.id || PROVIDERS[getProvider()].models[0].id; }
+function getApiKey(provider) {
+  const p = provider || getProvider();
+  return localStorage.getItem(API_KEY_PREFIX + p) || '';
 }
 
-function onApiKeyInput() {
-  const val = document.getElementById('apikeyInput').value.trim();
-  const btn = document.getElementById('apikeyBtn');
-  btn.textContent = val ? '儲存' : '清除';
-}
+// ── 切換供應商 ──
+function switchProvider(provider) {
+  localStorage.setItem(PROVIDER_KEY, provider);
 
-function saveApiKey() {
-  const val = document.getElementById('apikeyInput').value.trim();
+  // 更新 Tab 樣式
+  document.querySelectorAll('.provider-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + provider).classList.add('active');
+
+  // 重建模型列表
+  buildModelSelect(provider);
+
+  // 更新 Key 輸入框
+  const cfg = PROVIDERS[provider];
+  const input = document.getElementById('apikeyInput');
+  const hint  = document.getElementById('apikeyHint');
   const status = document.getElementById('apikeyStatus');
-  const box = document.getElementById('apikeyBox');
+  input.placeholder = cfg.placeholder;
+  hint.innerHTML = cfg.hint;
+  status.textContent = '';
+  status.className = 'apikey-status';
 
-  if (!val) {
-    localStorage.removeItem(API_KEY_STORAGE);
+  // 帶入已儲存的 Key（遮蔽）
+  const saved = getApiKey(provider);
+  input.value = saved ? saved.slice(0, 8) + '••••••••••••••••••••••••' : '';
+  if (saved) {
+    status.className = 'apikey-status ok';
+    status.textContent = '✅ 已有儲存的 API Key';
+    document.getElementById('apikeyBox').classList.add('verified');
+  } else {
+    document.getElementById('apikeyBox').classList.remove('verified');
+  }
+}
+
+// ── 建立模型下拉選單 ──
+function buildModelSelect(provider) {
+  const sel = document.getElementById('modelSelect');
+  const models = PROVIDERS[provider].models;
+  sel.innerHTML = models.map(m =>
+    `<option value="${m.id}">${m.label}</option>`
+  ).join('');
+
+  // 嘗試還原上次選的模型（同一供應商）
+  const savedModel = localStorage.getItem(MODEL_KEY);
+  const match = models.find(m => m.id === savedModel);
+  if (match) sel.value = match.id;
+  else sel.value = models.find(m => m.default)?.id || models[0].id;
+
+  onModelChange(false); // 更新說明，不儲存
+}
+
+// ── 模型變更 ──
+function onModelChange(doSave = true) {
+  const sel = document.getElementById('modelSelect');
+  const val = sel.value;
+  if (doSave) localStorage.setItem(MODEL_KEY, val);
+  const provider = getProvider();
+  const model = PROVIDERS[provider].models.find(m => m.id === val);
+  const desc = document.getElementById('modelDesc');
+  if (desc) desc.textContent = model?.desc || '';
+}
+
+// ── 儲存 API Key ──
+function saveApiKey() {
+  const val    = document.getElementById('apikeyInput').value.trim();
+  const status = document.getElementById('apikeyStatus');
+  const box    = document.getElementById('apikeyBox');
+  const provider = getProvider();
+  const cfg = PROVIDERS[provider];
+
+  if (!val || val.includes('•')) {
+    // 空白或遮蔽狀態 → 詢問是否清除
+    if (val.includes('•')) {
+      status.className = 'apikey-status';
+      status.textContent = '若要更換 Key，請清空輸入框後重新填入。';
+      return;
+    }
+    localStorage.removeItem(API_KEY_PREFIX + provider);
     status.className = 'apikey-status err';
-    status.textContent = '已清除 API Key。';
+    status.textContent = '已清除此供應商的 API Key。';
     box.classList.remove('verified');
     return;
   }
 
-  if (!val.startsWith('sk-ant-')) {
+  if (!val.startsWith(cfg.keyPrefix)) {
     status.className = 'apikey-status err';
-    status.textContent = '⚠️ 格式不對，Anthropic API Key 應以 sk-ant- 開頭。';
+    status.textContent = `⚠️ 格式不符，${cfg.name} 的 Key 應以「${cfg.keyPrefix}」開頭。`;
     return;
   }
 
-  localStorage.setItem(API_KEY_STORAGE, val);
+  localStorage.setItem(API_KEY_PREFIX + provider, val);
+  localStorage.setItem(MODEL_KEY, document.getElementById('modelSelect').value);
   status.className = 'apikey-status ok';
   status.textContent = '✅ API Key 已儲存於瀏覽器本機，不會外傳。';
   box.classList.add('verified');
-
-  // 遮蔽顯示
-  document.getElementById('apikeyInput').value = val.slice(0, 10) + '••••••••••••••••••••••••••••••';
+  document.getElementById('apikeyInput').value = val.slice(0, 8) + '••••••••••••••••••••••••';
 }
 
+// ── 初始化 UI ──
 function initApiKeyUI() {
-  const stored = getApiKey();
-  if (stored) {
-    const input = document.getElementById('apikeyInput');
-    const status = document.getElementById('apikeyStatus');
-    const box = document.getElementById('apikeyBox');
-    input.value = stored.slice(0, 10) + '••••••••••••••••••••••••••••••';
-    status.className = 'apikey-status ok';
-    status.textContent = '✅ 已有儲存的 API Key，可直接使用。';
-    box.classList.add('verified');
-    document.getElementById('apikeyBtn').textContent = '更新';
-  }
+  const provider = getProvider();
+  switchProvider(provider); // 還原供應商、模型、Key
 }
 
-// 頁面載入時初始化
 window.addEventListener('DOMContentLoaded', initApiKeyUI);
 
-// AI 面板中若無 key 則顯示警告
+// ── AI 面板：無 Key 警告 ──
 function renderAiKeyWarning() {
   const key = getApiKey();
   const panel = document.getElementById('aiMessages');
@@ -1109,10 +1257,63 @@ function renderAiKeyWarning() {
     const div = document.createElement('div');
     div.id = 'aiKeyWarning';
     div.className = 'ai-key-warning';
-    div.innerHTML = `⚠️ 尚未設定 API Key，AI 輔助功能無法使用。<br>請先回到<a href="#" onclick="document.getElementById('welcomeScreen').style.display='';return false;">首頁</a>設定您的 <a href="https://console.anthropic.com/" target="_blank">Anthropic API Key</a>。`;
+    div.innerHTML = `⚠️ 尚未設定 API Key，AI 輔助功能無法使用。<br>請先回到<a href="#" onclick="document.getElementById('welcomeScreen').style.display='';return false;">首頁</a>設定您的 API Key。`;
     panel.prepend(div);
   }
 }
+
+// ══════════════════════════════════════════
+// ── SEND TO AI (多供應商路由) ──
+// ══════════════════════════════════════════
+async function callLLM(prompt) {
+  const provider = getProvider();
+  const model    = document.getElementById('modelSelect').value;
+  const apiKey   = getApiKey(provider);
+
+  if (!apiKey) throw new Error('NO_KEY');
+
+  if (provider === 'anthropic') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.content?.[0]?.text || '';
+  }
+
+  if (provider === 'openai') {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  if (provider === 'google') {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1000 } })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  throw new Error('未知的供應商');
+}
+
+
 
 
 const STEPS = {
@@ -1956,33 +2157,9 @@ ${userText}
 7. 絕對不要捏造公司資訊、不存在的專案或假數字`;
 
   try {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      addAIMessage('⚠️ 請先在首頁設定您的 Anthropic API Key 才能使用 AI 功能。', 'error');
-      btn.disabled = false;
-      btn.textContent = '送出 →';
-      return;
-    }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: systemPrompt }]
-      })
-    });
-    const data = await response.json();
-    const reply = data.content?.[0]?.text || '抱歉，AI 暫時無法回應，請稍後再試。';
+    const reply = await callLLM(systemPrompt);
     addAIMessage(reply.replace(/\n/g, '<br>'), 'ai');
 
-    // If we got a draft response, offer to insert it
     if (mode === 'draft' || mode === 'polish') {
       const insertDiv = document.createElement('div');
       insertDiv.className = 'msg msg-system';
@@ -1991,7 +2168,11 @@ ${userText}
       document.getElementById('aiMessages').scrollTop = 99999;
     }
   } catch(e) {
-    addAIMessage('⚠️ 連線錯誤，請確認網路後重試。', 'error');
+    if (e.message === 'NO_KEY') {
+      addAIMessage('⚠️ 請先在首頁設定 API Key 才能使用 AI 功能。', 'error');
+    } else {
+      addAIMessage(`⚠️ 連線錯誤：${e.message || '請確認網路與 API Key 是否正確。'}`, 'error');
+    }
   }
 
   btn.disabled = false;
