@@ -1858,14 +1858,16 @@ function renderAiKeyWarning() {
 // ══════════════════════════════════════════
 // ── SEND TO AI (多供應商路由) ──
 // ══════════════════════════════════════════
-async function callLLM(prompt) {
+async function callLLM(prompt, systemPrompt) {
   const provider = getProvider();
-  const model    = document.getElementById('modelSelect').value;
+  const model    = localStorage.getItem(MODEL_KEY) || PROVIDERS[provider].models.find(m=>m.default)?.id || PROVIDERS[provider].models[0].id;
   const apiKey   = getApiKey(provider);
 
   if (!apiKey) throw new Error('NO_KEY');
 
   if (provider === 'anthropic') {
+    const body = { model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] };
+    if (systemPrompt) body.system = systemPrompt;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1874,7 +1876,7 @@ async function callLLM(prompt) {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({ model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify(body)
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
@@ -1882,10 +1884,13 @@ async function callLLM(prompt) {
   }
 
   if (provider === 'openai') {
+    const messages = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: prompt });
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model, max_tokens: 1000, messages })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
@@ -1893,10 +1898,13 @@ async function callLLM(prompt) {
   }
 
   if (provider === 'google') {
+    const parts = [];
+    if (systemPrompt) parts.push({ text: systemPrompt + '\n\n' });
+    parts.push({ text: prompt });
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1000 } })
+      body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 1000 } })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
