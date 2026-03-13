@@ -117,7 +117,7 @@
     z-index: 199;
   }
   .sidebar-overlay.visible { display: block; }
-  .sidebar-section { padding: 1.2rem 1rem; overflow: hidden; box-sizing: border-box; }
+  .sidebar-section { padding: 1.2rem 1rem; box-sizing: border-box; }
   .sidebar-label {
     font-family: 'Space Mono', monospace;
     font-size: 0.6rem;
@@ -205,7 +205,15 @@
     transition: all 0.2s;
   }
   .proj-new-btn:hover { background: var(--gold); color: var(--ink); }
-  .project-list { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .project-list {
+    list-style: none; margin: 0 0 0.6rem; padding: 0;
+    display: flex; flex-direction: column; gap: 3px;
+    max-height: 180px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .project-list::-webkit-scrollbar { width: 3px; }
+  .project-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   .project-item {
     display: flex; align-items: center; gap: 4px; padding: 0.35rem 0.5rem;
     border-radius: 5px; cursor: pointer; font-size: 0.78rem; color: #666;
@@ -266,7 +274,7 @@
   }
 
   /* ── MAIN ── */
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; padding-right: 362px; }
 
   /* ── STEP HEADER ── */
   .step-header {
@@ -300,26 +308,42 @@
     display: flex;
     overflow: hidden;
     min-width: 0;
+    position: relative;
+  }
+
+  /* welcome 和 editorPanel 都是 content-area 的直接子元素，互相切換顯示 */
+  .welcome {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2.5rem 3rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    min-width: 0;
   }
 
   .editor-panel {
     flex: 1;
     overflow-y: auto;
-    padding: 0;
     min-width: 0;
-    width: 0;
     display: flex;
     flex-direction: column;
   }
 
   .ai-panel {
+    position: fixed;
+    top: 60px;
+    right: 0;
     width: 360px;
+    height: calc(100vh - 60px);
     background: var(--ink);
     color: var(--paper);
     display: flex;
     flex-direction: column;
     border-left: 2px solid var(--gold);
     overflow: hidden;
+    z-index: 50;
   }
 
   .ai-panel-header {
@@ -410,6 +434,80 @@
     color: rgba(245,240,232,0.8);
   }
 
+  /* ── AI 主頁籤（撰寫 / 製圖）── */
+  .ai-main-tabs {
+    display: flex; gap: 4px;
+  }
+  .ai-main-tab {
+    padding: 0.25rem 0.6rem; border-radius: 4px; border: 1px solid rgba(201,168,76,0.3);
+    background: none; color: rgba(245,240,232,0.5); font-size: 0.7rem;
+    cursor: pointer; transition: all 0.2s; font-family: 'Noto Sans TC', sans-serif;
+  }
+  .ai-main-tab:hover { color: var(--paper); border-color: var(--gold); }
+  .ai-main-tab.active { background: var(--gold); color: var(--ink); border-color: var(--gold); font-weight: 700; }
+
+  /* ── 製圖面板 ── */
+  .chart-type-bar {
+    display: flex; gap: 3px; padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid rgba(201,168,76,0.2);
+    flex-wrap: wrap;
+  }
+  .ctype-btn {
+    flex: 1; min-width: 0; padding: 0.3rem 0.2rem; border-radius: 4px;
+    border: 1px solid rgba(201,168,76,0.25); background: none;
+    color: rgba(245,240,232,0.5); font-size: 0.62rem; cursor: pointer;
+    transition: all 0.2s; white-space: nowrap; text-align: center;
+  }
+  .ctype-btn:hover { border-color: var(--gold); color: var(--paper); }
+  .ctype-btn.active { background: rgba(201,168,76,0.2); border-color: var(--gold); color: var(--gold); font-weight: 700; }
+
+  .chart-preview-area {
+    flex: 1; overflow-y: auto; padding: 0.8rem;
+    display: flex; flex-direction: column; align-items: center;
+    background: rgba(0,0,0,0.15);
+  }
+  .chart-preview-area canvas, .chart-preview-area svg { max-width: 100%; }
+  .chart-placeholder {
+    color: rgba(245,240,232,0.3); font-size: 0.8rem; text-align: center;
+    margin: auto; line-height: 1.8;
+  }
+
+  .chart-manual-form-inner {
+    display: flex; flex-direction: column;
+  }
+  .chart-manual-form-inner label {
+    display: block; font-size: 0.68rem; color: rgba(245,240,232,0.6);
+    margin-bottom: 0.2rem; margin-top: 0.6rem;
+  }
+  .chart-manual-form-inner input,
+  .chart-manual-form-inner textarea,
+  .chart-manual-form-inner select {
+    width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(201,168,76,0.2); border-radius: 4px;
+    color: var(--paper); font-size: 0.75rem; padding: 0.35rem 0.5rem;
+    font-family: 'Noto Sans TC', sans-serif;
+  }
+  .chart-manual-form-inner input:focus,
+  .chart-manual-form-inner textarea:focus {
+    outline: none; border-color: var(--gold);
+  }
+  .chart-row-add {
+    margin-top: 0.5rem; width: 100%; padding: 0.3rem; border-radius: 4px;
+    border: 1px dashed rgba(201,168,76,0.3); background: none;
+    color: rgba(201,168,76,0.6); font-size: 0.7rem; cursor: pointer;
+  }
+  .chart-row-add:hover { border-color: var(--gold); color: var(--gold); }
+  .chart-data-row {
+    display: flex; gap: 4px; align-items: center; margin-bottom: 4px;
+  }
+  .chart-data-row input { flex: 1; }
+  .chart-data-row .del-row {
+    background: none; border: none; color: rgba(245,240,232,0.3);
+    cursor: pointer; font-size: 0.9rem; padding: 0 4px; flex-shrink: 0;
+  }
+  .chart-data-row .del-row:hover { color: var(--rust); }
+
+  /* ── 製圖面板結尾 ── */
   .ai-input-area {
     padding: 1rem;
     border-top: 1px solid rgba(201,168,76,0.2);
@@ -933,10 +1031,9 @@
     </div>
 
     <div class="content-area">
-      <!-- EDITOR -->
-      <div class="editor-panel" id="editorPanel">
-        <!-- Welcome screen shown by default -->
-        <div class="welcome" id="welcomeScreen">
+
+      <!-- WELCOME SCREEN（獨立於 editorPanel 之外） -->
+      <div class="welcome" id="welcomeScreen">
 
           <!-- 上方：標題區 -->
           <div class="welcome-hero">
@@ -1006,7 +1103,10 @@
             </div>
 
           </div><!-- /welcome-body -->
-        </div>
+      </div><!-- /welcomeScreen -->
+
+      <!-- EDITOR（步驟內容區，welcomeScreen 隱藏時才顯示） -->
+      <div class="editor-panel" id="editorPanel" style="display:none">
       </div>
 
       <!-- AI PANEL -->
@@ -1016,30 +1116,93 @@
             <div class="ai-dot"></div>
             AI 撰寫助手
           </div>
-        </div>
-        <div class="ai-mode-tabs">
-          <div class="ai-mode-tab active" onclick="setMode('draft')" id="tab-draft">草擬段落</div>
-          <div class="ai-mode-tab" onclick="setMode('hint')" id="tab-hint">填寫建議</div>
-          <div class="ai-mode-tab" onclick="setMode('polish')" id="tab-polish">潤稿優化</div>
-          <div class="ai-mode-tab" onclick="setMode('review')" id="tab-review">審查視角</div>
-        </div>
-        <div class="ai-messages" id="aiMessages">
-          <div class="msg msg-ai">
-            👋 <strong>歡迎使用 SBIR 撰寫助手！</strong><br><br>
-            請先在左側選擇申請階段，然後我可以幫你：<br>
-            • 根據你的想法<strong>草擬段落</strong><br>
-            • 提供每個欄位的<strong>填寫建議</strong><br>
-            • 協助<strong>潤稿優化</strong>已寫內容<br>
-            • 提供<strong>審查委員視角</strong>的建議
+          <div class="ai-main-tabs">
+            <button class="ai-main-tab active" id="mainTab-write" onclick="switchMainTab('write')">✍️ 撰寫</button>
+            <button class="ai-main-tab" id="mainTab-chart" onclick="switchMainTab('chart')">📊 製圖</button>
           </div>
         </div>
-        <div class="ai-input-area">
-          <textarea class="ai-textarea" id="aiInput" placeholder="輸入你的想法或問題，AI 助手將協助撰寫..."></textarea>
-          <div class="ai-btn-row">
-            <button class="ai-btn ai-btn-secondary" onclick="quickAction()">快速建議</button>
-            <button class="ai-btn ai-btn-primary" id="sendBtn" onclick="sendToAI()">送出 →</button>
+
+        <!-- ── 撰寫面板 ── -->
+        <div id="writePanel" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+          <div class="ai-mode-tabs">
+            <div class="ai-mode-tab active" onclick="setMode('draft')" id="tab-draft">草擬段落</div>
+            <div class="ai-mode-tab" onclick="setMode('hint')" id="tab-hint">填寫建議</div>
+            <div class="ai-mode-tab" onclick="setMode('polish')" id="tab-polish">潤稿優化</div>
+            <div class="ai-mode-tab" onclick="setMode('review')" id="tab-review">審查視角</div>
+          </div>
+          <div class="ai-messages" id="aiMessages">
+            <div class="msg msg-ai">
+              👋 <strong>歡迎使用 SBIR 撰寫助手！</strong><br><br>
+              請先在左側選擇申請階段，然後我可以幫你：<br>
+              • 根據你的想法<strong>草擬段落</strong><br>
+              • 提供每個欄位的<strong>填寫建議</strong><br>
+              • 協助<strong>潤稿優化</strong>已寫內容<br>
+              • 提供<strong>審查委員視角</strong>的建議
+            </div>
+          </div>
+          <div class="ai-input-area">
+            <textarea class="ai-textarea" id="aiInput" placeholder="輸入你的想法或問題，AI 助手將協助撰寫..."></textarea>
+            <div class="ai-btn-row">
+              <button class="ai-btn ai-btn-secondary" onclick="quickAction()">快速建議</button>
+              <button class="ai-btn ai-btn-primary" id="sendBtn" onclick="sendToAI()">送出 →</button>
+            </div>
           </div>
         </div>
+
+        <!-- ── 製圖面板 ── -->
+        <div id="chartPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+          <!-- 製圖模式切換 -->
+          <div class="ai-mode-tabs">
+            <div class="ai-mode-tab active" id="ctab-ai" onclick="switchChartMode('ai')">AI描述生成</div>
+            <div class="ai-mode-tab" id="ctab-manual" onclick="switchChartMode('manual')">手動填數據</div>
+          </div>
+
+          <!-- AI描述模式 -->
+          <div id="chartAiMode" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+            <div class="chart-type-bar">
+              <button class="ctype-btn active" data-type="bar" onclick="selectChartType('bar',this)">📊 長條</button>
+              <button class="ctype-btn" data-type="line" onclick="selectChartType('line',this)">📈 折線</button>
+              <button class="ctype-btn" data-type="pie" onclick="selectChartType('pie',this)">🥧 圓餅</button>
+              <button class="ctype-btn" data-type="gantt" onclick="selectChartType('gantt',this)">📅 甘特</button>
+              <button class="ctype-btn" data-type="swot" onclick="selectChartType('swot',this)">🎯 SWOT</button>
+            </div>
+            <div class="chart-preview-area" id="chartPreview">
+              <div class="chart-placeholder">選擇圖表類型後，<br>描述你的需求，<br>AI 將自動生成圖表</div>
+            </div>
+            <div class="ai-input-area">
+              <textarea class="ai-textarea" id="chartAiInput" placeholder="描述圖表需求，例如：「顯示2023-2025年台灣AI市場規模成長，從150億到380億台幣」"></textarea>
+              <div class="ai-btn-row">
+                <button class="ai-btn ai-btn-secondary" id="chartDownloadBtn" onclick="downloadChart()" style="display:none">⬇ 下載PNG</button>
+                <button class="ai-btn ai-btn-primary" onclick="generateChartFromAI()">✨ 生成圖表</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 手動填數據模式 -->
+          <div id="chartManualMode" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+            <div class="chart-type-bar">
+              <button class="ctype-btn active" data-type="bar" onclick="selectManualType('bar',this)">📊 長條</button>
+              <button class="ctype-btn" data-type="line" onclick="selectManualType('line',this)">📈 折線</button>
+              <button class="ctype-btn" data-type="pie" onclick="selectManualType('pie',this)">🥧 圓餅</button>
+              <button class="ctype-btn" data-type="gantt" onclick="selectManualType('gantt',this)">📅 甘特</button>
+              <button class="ctype-btn" data-type="swot" onclick="selectManualType('swot',this)">🎯 SWOT</button>
+            </div>
+            <!-- 表單 + 預覽合為一個可滾動區域 -->
+            <div style="flex:1;overflow-y:auto;padding:0.8rem 0.9rem;display:flex;flex-direction:column;gap:0.8rem;">
+              <div class="chart-manual-form-inner" id="chartManualForm"></div>
+              <div id="chartPreviewManual" style="min-height:200px;background:rgba(0,0,0,0.15);border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                <div class="chart-placeholder">填入數據後點擊生成</div>
+              </div>
+            </div>
+            <div class="ai-input-area" style="padding:0.6rem 1rem;">
+              <div class="ai-btn-row">
+                <button class="ai-btn ai-btn-secondary" id="chartDownloadBtnM" onclick="downloadChartManual()" style="display:none">⬇ 下載PNG</button>
+                <button class="ai-btn ai-btn-primary" onclick="generateChartManual()">📊 生成圖表</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1179,14 +1342,15 @@ function switchProject(id) {
 
   if (project.phase) {
     document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('editorPanel').style.display = 'flex';
     document.getElementById('stepHeader').style.display = 'block';
     document.getElementById('navRow').style.display = 'flex';
     document.getElementById('stepsSection').style.display = 'block';
     renderStepList();
     renderStep();
   } else {
-    // 新專案，回到歡迎畫面
     document.getElementById('welcomeScreen').style.display = 'flex';
+    document.getElementById('editorPanel').style.display = 'none';
     document.getElementById('stepHeader').style.display = 'none';
     document.getElementById('navRow').style.display = 'none';
     document.getElementById('stepsSection').style.display = 'none';
@@ -1232,6 +1396,7 @@ function deleteProject(id, event) {
       state.currentStep = 0;
       renderProjectList();
       document.getElementById('welcomeScreen').style.display = 'flex';
+      document.getElementById('editorPanel').style.display = 'none';
       document.getElementById('stepHeader').style.display = 'none';
       document.getElementById('navRow').style.display = 'none';
       document.getElementById('stepsSection').style.display = 'none';
@@ -1672,6 +1837,7 @@ window.addEventListener('DOMContentLoaded', () => {
   checkVersion();
   initApiKeyUI();
   initProjects();
+  initManualForm();
 });
 
 // ── AI 面板：無 Key 警告 ──
@@ -2357,6 +2523,7 @@ function selectPhase(p, fromCard=false) {
 function startWriting() {
   if (!state.phase) return;
   document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('editorPanel').style.display = 'flex';
   document.getElementById('stepHeader').style.display = 'block';
   document.getElementById('navRow').style.display = 'flex';
   state.currentStep = 0;
@@ -2497,6 +2664,430 @@ function toggleCheck(el) {
 }
 
 // ── AI MODE ──
+// ══════════════════════════════════════════
+// ── AI CHART ASSISTANT ──
+// ══════════════════════════════════════════
+let chartState = {
+  aiType: 'bar',
+  manualType: 'bar',
+  currentCanvas: null,
+  currentCanvasM: null
+};
+
+function switchMainTab(tab) {
+  document.getElementById('mainTab-write').classList.toggle('active', tab === 'write');
+  document.getElementById('mainTab-chart').classList.toggle('active', tab === 'chart');
+  document.getElementById('writePanel').style.display = tab === 'write' ? 'flex' : 'none';
+  document.getElementById('chartPanel').style.display = tab === 'chart' ? 'flex' : 'none';
+}
+
+function switchChartMode(mode) {
+  document.getElementById('ctab-ai').classList.toggle('active', mode === 'ai');
+  document.getElementById('ctab-manual').classList.toggle('active', mode === 'manual');
+  document.getElementById('chartAiMode').style.display = mode === 'ai' ? 'flex' : 'none';
+  document.getElementById('chartManualMode').style.display = mode === 'manual' ? 'flex' : 'none';
+}
+
+function selectChartType(type, btn) {
+  chartState.aiType = type;
+  btn.closest('.chart-type-bar').querySelectorAll('.ctype-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function selectManualType(type, btn) {
+  chartState.manualType = type;
+  btn.closest('.chart-type-bar').querySelectorAll('.ctype-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderManualForm(type);
+}
+
+// ── 手動表單渲染 ──
+function renderManualForm(type) {
+  const form = document.getElementById('chartManualForm');
+  if (type === 'bar' || type === 'line') {
+    form.innerHTML = `
+      <label>圖表標題</label>
+      <input id="mf-title" placeholder="例：2023-2025市場規模（億元）" />
+      <label>X軸標籤（逗號分隔）</label>
+      <input id="mf-xlabels" placeholder="例：2023,2024,2025" />
+      <label>數據系列</label>
+      <div id="mf-series">
+        <div class="chart-data-row">
+          <input placeholder="系列名稱" class="series-name" style="max-width:80px">
+          <input placeholder="數值（逗號分隔）" class="series-vals">
+          <button class="del-row" onclick="this.parentNode.remove()">✕</button>
+        </div>
+      </div>
+      <button class="chart-row-add" onclick="addSeriesRow()">＋ 新增系列</button>
+    `;
+  } else if (type === 'pie') {
+    form.innerHTML = `
+      <label>圖表標題</label>
+      <input id="mf-title" placeholder="例：市占率分配" />
+      <label>項目與數值</label>
+      <div id="mf-series">
+        <div class="chart-data-row">
+          <input placeholder="項目名稱" class="series-name">
+          <input placeholder="數值" class="series-vals" type="number">
+          <button class="del-row" onclick="this.parentNode.remove()">✕</button>
+        </div>
+        <div class="chart-data-row">
+          <input placeholder="項目名稱" class="series-name">
+          <input placeholder="數值" class="series-vals" type="number">
+          <button class="del-row" onclick="this.parentNode.remove()">✕</button>
+        </div>
+      </div>
+      <button class="chart-row-add" onclick="addSeriesRow()">＋ 新增項目</button>
+    `;
+  } else if (type === 'gantt') {
+    form.innerHTML = `
+      <label>計畫名稱</label>
+      <input id="mf-title" placeholder="例：研發計畫時程" />
+      <label>工作項目（名稱 | 開始月 | 結束月）</label>
+      <div id="mf-series">
+        <div class="chart-data-row">
+          <input placeholder="工作項目" class="series-name">
+          <input placeholder="開始月" class="series-vals" type="number" min="1" max="24" style="max-width:55px">
+          <input placeholder="結束月" class="series-vals2" type="number" min="1" max="24" style="max-width:55px">
+          <button class="del-row" onclick="this.parentNode.remove()">✕</button>
+        </div>
+      </div>
+      <button class="chart-row-add" onclick="addGanttRow()">＋ 新增工作項目</button>
+    `;
+  } else if (type === 'swot') {
+    form.innerHTML = `
+      <label>公司／計畫名稱</label>
+      <input id="mf-title" placeholder="例：AI智慧檢測系統" />
+      <label>優勢 Strengths（換行分隔）</label>
+      <textarea id="mf-S" rows="2" placeholder="技術領先&#10;團隊豐富"></textarea>
+      <label>劣勢 Weaknesses</label>
+      <textarea id="mf-W" rows="2" placeholder="資金不足&#10;知名度低"></textarea>
+      <label>機會 Opportunities</label>
+      <textarea id="mf-O" rows="2" placeholder="市場成長&#10;政策支持"></textarea>
+      <label>威脅 Threats</label>
+      <textarea id="mf-T" rows="2" placeholder="競爭者多&#10;技術門檻"></textarea>
+    `;
+  }
+}
+
+function addSeriesRow() {
+  const div = document.createElement('div');
+  div.className = 'chart-data-row';
+  div.innerHTML = `<input placeholder="名稱" class="series-name"><input placeholder="數值" class="series-vals"><button class="del-row" onclick="this.parentNode.remove()">✕</button>`;
+  document.getElementById('mf-series').appendChild(div);
+}
+function addGanttRow() {
+  const div = document.createElement('div');
+  div.className = 'chart-data-row';
+  div.innerHTML = `<input placeholder="工作項目" class="series-name"><input placeholder="開始月" class="series-vals" type="number" min="1" max="24" style="max-width:55px"><input placeholder="結束月" class="series-vals2" type="number" min="1" max="24" style="max-width:55px"><button class="del-row" onclick="this.parentNode.remove()">✕</button>`;
+  document.getElementById('mf-series').appendChild(div);
+}
+
+// 初始化手動表單
+function initManualForm() {
+  renderManualForm('bar');
+}
+
+// ── AI 描述生成圖表 ──
+async function generateChartFromAI() {
+  const desc = document.getElementById('chartAiInput').value.trim();
+  if (!desc) { alert('請先描述圖表需求'); return; }
+
+  const preview = document.getElementById('chartPreview');
+  preview.innerHTML = '<div class="chart-placeholder">⏳ AI 生成中...</div>';
+  document.getElementById('chartDownloadBtn').style.display = 'none';
+
+  const typeNames = { bar:'長條圖', line:'折線圖', pie:'圓餅圖', gantt:'甘特圖', swot:'SWOT分析圖' };
+  const typeName = typeNames[chartState.aiType];
+
+  const systemPrompt = `你是專業的資料視覺化助手，專門協助SBIR計畫書製作統計圖表。
+根據用戶描述，輸出一個JSON物件，格式如下（依圖表類型不同）：
+
+長條圖/折線圖：{"title":"","xLabels":[],"series":[{"name":"","data":[]}],"yUnit":""}
+圓餅圖：{"title":"","items":[{"label":"","value":0}]}
+甘特圖：{"title":"","totalMonths":12,"tasks":[{"name":"","start":1,"end":3}]}
+SWOT：{"title":"","S":[],"W":[],"O":[],"T":[]}
+
+只輸出JSON，不要其他文字。`;
+
+  try {
+    const res = await callLLM(`請為這個${typeName}生成圖表數據：${desc}`, systemPrompt);
+    let json;
+    try {
+      const clean = res.replace(/```json|```/g, '').trim();
+      json = JSON.parse(clean);
+    } catch {
+      preview.innerHTML = '<div class="chart-placeholder" style="color:#e57373">AI 回傳格式錯誤，請重試</div>';
+      return;
+    }
+    renderChart(json, chartState.aiType, 'chartPreview', true);
+    document.getElementById('chartDownloadBtn').style.display = 'block';
+  } catch(e) {
+    preview.innerHTML = `<div class="chart-placeholder" style="color:#e57373">生成失敗：${e.message}</div>`;
+  }
+}
+
+// ── 手動生成圖表 ──
+function generateChartManual() {
+  const type = chartState.manualType;
+  let json = {};
+
+  if (type === 'bar' || type === 'line') {
+    const title = document.getElementById('mf-title')?.value || '';
+    const xlabels = (document.getElementById('mf-xlabels')?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+    const names = [...document.querySelectorAll('#mf-series .series-name')].map(i=>i.value||'系列');
+    const vals = [...document.querySelectorAll('#mf-series .series-vals')].map(i=>i.value.split(',').map(v=>parseFloat(v.trim())||0));
+    json = { title, xLabels: xlabels, series: names.map((n,i)=>({name:n,data:vals[i]||[]})), yUnit:'' };
+  } else if (type === 'pie') {
+    const title = document.getElementById('mf-title')?.value || '';
+    const labels = [...document.querySelectorAll('#mf-series .series-name')].map(i=>i.value||'項目');
+    const vals = [...document.querySelectorAll('#mf-series .series-vals')].map(i=>parseFloat(i.value)||0);
+    json = { title, items: labels.map((l,i)=>({label:l,value:vals[i]})) };
+  } else if (type === 'gantt') {
+    const title = document.getElementById('mf-title')?.value || '';
+    const names = [...document.querySelectorAll('#mf-series .series-name')].map(i=>i.value||'工作');
+    const starts = [...document.querySelectorAll('#mf-series .series-vals')].map(i=>parseInt(i.value)||1);
+    const ends = [...document.querySelectorAll('#mf-series .series-vals2')].map(i=>parseInt(i.value)||2);
+    json = { title, totalMonths: Math.max(...ends, 12), tasks: names.map((n,i)=>({name:n,start:starts[i],end:ends[i]})) };
+  } else if (type === 'swot') {
+    json = {
+      title: document.getElementById('mf-title')?.value || '',
+      S: (document.getElementById('mf-S')?.value||'').split('\n').filter(Boolean),
+      W: (document.getElementById('mf-W')?.value||'').split('\n').filter(Boolean),
+      O: (document.getElementById('mf-O')?.value||'').split('\n').filter(Boolean),
+      T: (document.getElementById('mf-T')?.value||'').split('\n').filter(Boolean),
+    };
+  }
+  renderChart(json, type, 'chartPreviewManual', false);
+  document.getElementById('chartDownloadBtnM').style.display = 'block';
+}
+
+// ── 核心繪圖引擎（Canvas）──
+const CHART_COLORS = ['#C9A84C','#4A6741','#8B3A2F','#5B8DB8','#A67C52','#7B6D8D','#4A8B7F','#B8734A'];
+
+function renderChart(json, type, containerId, isAI) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const canvas = document.createElement('canvas');
+  canvas.width = 320; canvas.height = 220;
+  canvas.style.borderRadius = '6px';
+  container.appendChild(canvas);
+  if (isAI) chartState.currentCanvas = canvas;
+  else chartState.currentCanvasM = canvas;
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (type === 'bar') drawBar(ctx, json, canvas);
+  else if (type === 'line') drawLine(ctx, json, canvas);
+  else if (type === 'pie') drawPie(ctx, json, canvas);
+  else if (type === 'gantt') drawGantt(ctx, json, canvas);
+  else if (type === 'swot') drawSwot(ctx, json, canvas);
+}
+
+function drawTitle(ctx, title, w) {
+  ctx.fillStyle = '#C9A84C';
+  ctx.font = 'bold 13px "Noto Sans TC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(title || '', w / 2, 20);
+}
+
+function drawBar(ctx, json, canvas) {
+  const W = canvas.width, H = canvas.height;
+  const pad = { top:35, bottom:50, left:45, right:15 };
+  drawTitle(ctx, json.title, W);
+  if (!json.xLabels?.length || !json.series?.length) return;
+  const allVals = json.series.flatMap(s=>s.data);
+  const maxV = Math.max(...allVals, 1);
+  const gW = W - pad.left - pad.right;
+  const gH = H - pad.top - pad.bottom;
+  const nGroups = json.xLabels.length;
+  const nSeries = json.series.length;
+  const bW = (gW / nGroups) / (nSeries + 1);
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++) {
+    const y = pad.top + gH - (gH * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(Math.round(maxV * i / 4), pad.left - 4, y + 3);
+  }
+  json.series.forEach((series, si) => {
+    ctx.fillStyle = CHART_COLORS[si % CHART_COLORS.length];
+    series.data.forEach((val, gi) => {
+      const bH = (val / maxV) * gH;
+      const x = pad.left + gi * (gW / nGroups) + si * bW + bW * 0.5;
+      const y = pad.top + gH - bH;
+      ctx.fillRect(x, y, bW * 0.85, bH);
+    });
+  });
+  // x labels
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '9px "Noto Sans TC"'; ctx.textAlign = 'center';
+  json.xLabels.forEach((lbl, i) => {
+    const x = pad.left + i * (gW / nGroups) + (gW / nGroups) / 2;
+    ctx.fillText(lbl, x, H - pad.bottom + 14);
+  });
+  // legend
+  json.series.forEach((s, i) => {
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.fillRect(pad.left + i * 80, H - 16, 10, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '9px "Noto Sans TC"'; ctx.textAlign = 'left';
+    ctx.fillText(s.name, pad.left + i * 80 + 13, H - 9);
+  });
+}
+
+function drawLine(ctx, json, canvas) {
+  const W = canvas.width, H = canvas.height;
+  const pad = { top:35, bottom:50, left:45, right:15 };
+  drawTitle(ctx, json.title, W);
+  if (!json.xLabels?.length || !json.series?.length) return;
+  const allVals = json.series.flatMap(s=>s.data);
+  const maxV = Math.max(...allVals, 1);
+  const gW = W - pad.left - pad.right;
+  const gH = H - pad.top - pad.bottom;
+  const nGroups = json.xLabels.length;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++) {
+    const y = pad.top + gH - (gH * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(Math.round(maxV * i / 4), pad.left - 4, y + 3);
+  }
+  json.series.forEach((series, si) => {
+    const color = CHART_COLORS[si % CHART_COLORS.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    series.data.forEach((val, i) => {
+      const x = pad.left + i * (gW / (nGroups - 1 || 1));
+      const y = pad.top + gH - (val / maxV) * gH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    series.data.forEach((val, i) => {
+      const x = pad.left + i * (gW / (nGroups - 1 || 1));
+      const y = pad.top + gH - (val / maxV) * gH;
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI*2); ctx.fill();
+    });
+  });
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '9px "Noto Sans TC"'; ctx.textAlign = 'center';
+  json.xLabels.forEach((lbl, i) => {
+    const x = pad.left + i * (gW / (nGroups - 1 || 1));
+    ctx.fillText(lbl, x, H - pad.bottom + 14);
+  });
+  json.series.forEach((s, i) => {
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]; ctx.fillRect(pad.left + i * 80, H - 16, 10, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '9px "Noto Sans TC"'; ctx.textAlign = 'left';
+    ctx.fillText(s.name, pad.left + i * 80 + 13, H - 9);
+  });
+}
+
+function drawPie(ctx, json, canvas) {
+  const W = canvas.width, H = canvas.height;
+  drawTitle(ctx, json.title, W);
+  if (!json.items?.length) return;
+  const total = json.items.reduce((s,i)=>s+i.value, 0) || 1;
+  const cx = W / 2 - 30, cy = H / 2 + 15, r = Math.min(W, H) / 3;
+  let angle = -Math.PI / 2;
+  json.items.forEach((item, i) => {
+    const slice = (item.value / total) * Math.PI * 2;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, angle, angle + slice); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1.5; ctx.stroke();
+    const mid = angle + slice / 2;
+    if (slice > 0.25) {
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(Math.round(item.value / total * 100) + '%', cx + Math.cos(mid) * r * 0.65, cy + Math.sin(mid) * r * 0.65 + 3);
+    }
+    angle += slice;
+  });
+  // legend
+  const legendX = W - 95;
+  json.items.forEach((item, i) => {
+    const y = 40 + i * 18;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]; ctx.fillRect(legendX, y, 10, 10);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = '9px "Noto Sans TC"'; ctx.textAlign = 'left';
+    ctx.fillText(item.label, legendX + 13, y + 9);
+  });
+}
+
+function drawGantt(ctx, json, canvas) {
+  const W = canvas.width, H = canvas.height;
+  drawTitle(ctx, json.title, W);
+  if (!json.tasks?.length) return;
+  const tasks = json.tasks.slice(0, 8);
+  const total = json.totalMonths || 12;
+  const pad = { top:35, bottom:25, left:85, right:15 };
+  const rowH = Math.min(22, (H - pad.top - pad.bottom) / tasks.length);
+  const gW = W - pad.left - pad.right;
+  // month grid
+  for (let m=0; m<=total; m++) {
+    const x = pad.left + (m / total) * gW;
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, H - pad.bottom); ctx.stroke();
+    if (m % 3 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('M'+(m+1), x, H - pad.bottom + 12);
+    }
+  }
+  tasks.forEach((task, i) => {
+    const y = pad.top + i * rowH + 2;
+    const x1 = pad.left + ((task.start - 1) / total) * gW;
+    const x2 = pad.left + (task.end / total) * gW;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x1, y, x2 - x1, rowH - 4, 3) : ctx.rect(x1, y, x2 - x1, rowH - 4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '9px "Noto Sans TC"'; ctx.textAlign = 'right';
+    ctx.fillText(task.name.slice(0, 8), pad.left - 4, y + rowH / 2 + 1);
+  });
+}
+
+function drawSwot(ctx, json, canvas) {
+  const W = canvas.width, H = canvas.height;
+  drawTitle(ctx, json.title, W);
+  const pad = 30;
+  const qW = (W - pad * 2) / 2, qH = (H - pad - 35) / 2;
+  const quads = [
+    { label:'S 優勢', items: json.S||[], x: pad, y: 35, color:'#4A6741' },
+    { label:'W 劣勢', items: json.W||[], x: pad + qW, y: 35, color:'#8B3A2F' },
+    { label:'O 機會', items: json.O||[], x: pad, y: 35 + qH, color:'#5B8DB8' },
+    { label:'T 威脅', items: json.T||[], x: pad + qW, y: 35 + qH, color:'#A67C52' },
+  ];
+  quads.forEach(q => {
+    ctx.fillStyle = q.color + '33';
+    ctx.strokeStyle = q.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(q.x, q.y, qW - 4, qH - 4, 4) : ctx.rect(q.x, q.y, qW - 4, qH - 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = q.color; ctx.font = 'bold 10px "Noto Sans TC"'; ctx.textAlign = 'left';
+    ctx.fillText(q.label, q.x + 6, q.y + 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = '8.5px "Noto Sans TC"';
+    q.items.slice(0, 4).forEach((item, i) => {
+      ctx.fillText('• ' + item.slice(0, 14), q.x + 6, q.y + 27 + i * 14);
+    });
+  });
+}
+
+// ── 下載 PNG ──
+function downloadChart() {
+  const canvas = chartState.currentCanvas;
+  if (!canvas) return;
+  const link = document.createElement('a');
+  link.download = `SBIR_圖表_${new Date().toISOString().slice(0,10)}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+function downloadChartManual() {
+  const canvas = chartState.currentCanvasM;
+  if (!canvas) return;
+  const link = document.createElement('a');
+  link.download = `SBIR_圖表_${new Date().toISOString().slice(0,10)}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 function setMode(mode) {
   state.aiMode = mode;
   document.querySelectorAll('.ai-mode-tab').forEach(t => t.classList.remove('active'));
