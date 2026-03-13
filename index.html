@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="app-version" content="1.0.3">
 <title>SBIR 計畫書撰寫助手</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
@@ -69,22 +73,50 @@
   }
 
   /* ── LAYOUT ── */
-  .app { display: flex; height: calc(100vh - 60px); }
+  .app {
+    display: flex;
+    height: calc(100vh - 60px);
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+  }
 
-  /* ── SIDEBAR ── */
+  /* ── SIDEBAR 漢堡按鈕 ── */
+  .sidebar-toggle {
+    background: none; border: none; color: var(--paper);
+    font-size: 1.3rem; cursor: pointer; padding: 4px 8px;
+    border-radius: 4px; line-height: 1; transition: background 0.2s;
+  }
+  .sidebar-toggle:hover { background: rgba(255,255,255,0.15); }
+
+  /* ── SIDEBAR（抽屜式 overlay）── */
   .sidebar {
+    position: fixed;
+    top: 60px;
+    left: -280px;
     width: 260px;
-    min-width: 260px;
-    max-width: 260px;
+    height: calc(100vh - 60px);
     background: var(--cream);
     border-right: 1px solid var(--border);
     overflow-y: auto;
     overflow-x: hidden;
-    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    box-sizing: border-box;
+    z-index: 200;
+    transition: left 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.15);
   }
+  .sidebar.open { left: 0; }
+
+  /* 遮罩 */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 60px 0 0 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 199;
+  }
+  .sidebar-overlay.visible { display: block; }
   .sidebar-section { padding: 1.2rem 1rem; overflow: hidden; box-sizing: border-box; }
   .sidebar-label {
     font-family: 'Space Mono', monospace;
@@ -234,7 +266,7 @@
   }
 
   /* ── MAIN ── */
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 
   /* ── STEP HEADER ── */
   .step-header {
@@ -273,9 +305,11 @@
   .editor-panel {
     flex: 1;
     overflow-y: auto;
-    padding: 1.5rem 2rem;
+    padding: 0;
     min-width: 0;
-    width: 0; /* 防止內容撐開 flex 寬度 */
+    width: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .ai-panel {
@@ -593,26 +627,55 @@
 
   /* ── WELCOME SCREEN ── */
   .welcome {
-    padding: 2rem;
-    max-width: 700px;
     width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    padding: 2.5rem 3rem;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
   }
+
+  /* 上方標題 */
+  .welcome-hero { max-width: 600px; }
   .welcome-title {
     font-family: 'Noto Serif TC', serif;
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: 700;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.6rem;
     line-height: 1.3;
   }
   .welcome-title em { font-style: normal; color: var(--gold); }
-  .welcome-sub { font-size: 0.9rem; color: #666; margin-bottom: 2rem; line-height: 1.6; }
-  .welcome-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-bottom: 2rem; }
+  .welcome-sub { font-size: 0.88rem; color: #666; line-height: 1.7; }
+
+  /* 下方兩欄 */
+  .welcome-body {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  .welcome-section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* 左欄 */
+  .welcome-left { display: flex; flex-direction: column; gap: 1rem; }
+  .welcome-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
   .welcome-card {
     background: white;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 1.2rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1rem;
     cursor: pointer;
     transition: all 0.2s;
     text-align: center;
@@ -621,38 +684,29 @@
   .welcome-card.selected { border-color: var(--gold); background: rgba(201,168,76,0.08); }
   .wc-badge {
     font-family: 'Space Mono', monospace;
-    font-size: 0.65rem;
-    font-weight: 700;
-    background: var(--ink);
-    color: var(--gold);
-    padding: 3px 10px;
-    border-radius: 2px;
-    margin-bottom: 0.8rem;
-    display: inline-block;
+    font-size: 0.62rem; font-weight: 700;
+    background: var(--ink); color: var(--gold);
+    padding: 3px 10px; border-radius: 2px;
+    margin-bottom: 0.7rem; display: inline-block;
   }
-  .wc-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.4rem; }
+  .wc-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 0.4rem; }
   .wc-desc { font-size: 0.72rem; color: #888; line-height: 1.5; }
-  .wc-limit {
-    margin-top: 0.6rem;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--gold);
-  }
+  .wc-limit { margin-top: 0.6rem; font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--gold); }
+
   .welcome-start-btn {
-    padding: 0.8rem 2.5rem;
-    background: var(--ink);
-    color: var(--paper);
-    border: 2px solid var(--gold);
-    border-radius: 4px;
+    padding: 0.85rem 2rem;
+    background: var(--ink); color: var(--paper);
+    border: 2px solid var(--gold); border-radius: 6px;
     font-family: 'Noto Sans TC', sans-serif;
-    font-size: 0.9rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s;
-    letter-spacing: 0.05em;
+    font-size: 0.92rem; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; letter-spacing: 0.05em;
+    align-self: flex-start;
   }
   .welcome-start-btn:hover { background: var(--gold); color: var(--ink); }
   .welcome-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* 右欄 */
+  .welcome-right { display: flex; flex-direction: column; }
 
   /* ── API Key / Provider Box ── */
   .apikey-box {
@@ -807,16 +861,22 @@
 <body>
 
 <header class="header">
-  <div class="header-logo">SBIR <span>計畫書</span>撰寫助手</div>
+  <div style="display:flex;align-items:center;gap:0.8rem;">
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="專案選單">☰</button>
+    <div class="header-logo">SBIR <span>計畫書</span>撰寫助手</div>
+  </div>
   <div class="header-right">
     <div class="phase-indicator" id="phaseIndicator">請先選擇申請階段</div>
     <div class="header-badge">AI POWERED</div>
   </div>
 </header>
 
-<div class="app">
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
+<div class="app" style="width:100%;overflow:hidden;">
+  <!-- 遮罩 -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- SIDEBAR（抽屜式） -->
+  <aside class="sidebar" id="sidebar">
     <!-- 專案管理區塊 -->
     <div class="sidebar-section project-section">
       <div class="sidebar-label-row">
@@ -865,7 +925,7 @@
   </aside>
 
   <!-- MAIN -->
-  <main class="main">
+  <main class="main" style="width:100%;min-width:0;overflow:hidden;flex:1;">
     <div class="step-header" id="stepHeader" style="display:none">
       <div class="step-title" id="stepTitle"></div>
       <div class="step-desc" id="stepDesc"></div>
@@ -877,71 +937,75 @@
       <div class="editor-panel" id="editorPanel">
         <!-- Welcome screen shown by default -->
         <div class="welcome" id="welcomeScreen">
-          <div class="welcome-title">撰寫 SBIR 計畫書，<br><em>從這裡開始</em></div>
-          <div class="welcome-sub">
-            本工具整合 SBIR 專業知識、歷屆案例與 AI 輔助，引導您一步一步完成計畫書。
-            支援 Phase 1、Phase 2、Phase 2+ 三種申請類型。
+
+          <!-- 上方：標題區 -->
+          <div class="welcome-hero">
+            <div class="welcome-title">撰寫 SBIR 計畫書，<br><em>從這裡開始</em></div>
+            <div class="welcome-sub">整合 SBIR 專業知識、歷屆案例與 AI 輔助，逐步引導完成計畫書。<br>支援 Phase 1、Phase 2、Phase 2+ 三種申請類型。</div>
           </div>
 
-          <!-- API Key 區塊（多供應商） -->
-          <div class="apikey-box" id="apikeyBox">
-            <div class="apikey-title">🤖 設定 AI 供應商與模型</div>
-            <div class="apikey-desc">
-              選擇您偏好的 AI 供應商，填入對應的 API Key。Key 僅儲存於瀏覽器本機，不會外傳。
-            </div>
+          <!-- 下方：左右兩欄 -->
+          <div class="welcome-body">
 
-            <!-- 供應商選擇 -->
-            <div class="provider-tabs">
-              <button class="provider-tab active" id="tab-anthropic" onclick="switchProvider('anthropic')">
-                <span class="ptab-icon">◆</span> Anthropic Claude
+            <!-- 左欄：選階段 + 開始按鈕 -->
+            <div class="welcome-left">
+              <div class="welcome-section-label">選擇申請階段</div>
+              <div class="welcome-cards">
+                <div class="welcome-card" id="card1" onclick="selectPhaseCard(1)">
+                  <div class="wc-badge">Phase 1</div>
+                  <div class="wc-title">先期研究</div>
+                  <div class="wc-desc">驗證創新構想可行性，以簡報審查為主</div>
+                  <div class="wc-limit">補助上限 150 萬・6 個月</div>
+                </div>
+                <div class="welcome-card" id="card2" onclick="selectPhaseCard(2)">
+                  <div class="wc-badge">Phase 2</div>
+                  <div class="wc-title">研究開發</div>
+                  <div class="wc-desc">進行產品雛形開發，完整計畫書審查</div>
+                  <div class="wc-limit">補助上限 1,200 萬・24 個月</div>
+                </div>
+                <div class="welcome-card" id="card3" onclick="selectPhaseCard(3)">
+                  <div class="wc-badge">Phase 2+</div>
+                  <div class="wc-title">加值應用</div>
+                  <div class="wc-desc">基於 Phase 2 成果，推進商業化規模化</div>
+                  <div class="wc-limit">補助上限 600 萬</div>
+                </div>
+              </div>
+              <button class="welcome-start-btn" id="startBtn" onclick="startWriting()" disabled>
+                選擇階段後開始撰寫 →
               </button>
-              <button class="provider-tab" id="tab-openai" onclick="switchProvider('openai')">
-                <span class="ptab-icon">⬡</span> OpenAI GPT
-              </button>
-              <button class="provider-tab" id="tab-google" onclick="switchProvider('google')">
-                <span class="ptab-icon">✦</span> Google Gemini
-              </button>
             </div>
 
-            <!-- 模型選擇 -->
-            <div class="model-selector-row">
-              <label class="model-label">模型</label>
-              <select id="modelSelect" onchange="onModelChange()"></select>
+            <!-- 右欄：API 設定 -->
+            <div class="welcome-right">
+              <div class="welcome-section-label">設定 AI 供應商</div>
+              <div class="apikey-box" id="apikeyBox">
+                <div class="apikey-desc">選擇偏好的 AI 供應商，填入對應 API Key。Key 僅存於瀏覽器本機，不外傳。</div>
+                <div class="provider-tabs">
+                  <button class="provider-tab active" id="tab-anthropic" onclick="switchProvider('anthropic')">
+                    <span class="ptab-icon">◆</span> Claude
+                  </button>
+                  <button class="provider-tab" id="tab-openai" onclick="switchProvider('openai')">
+                    <span class="ptab-icon">⬡</span> OpenAI
+                  </button>
+                  <button class="provider-tab" id="tab-google" onclick="switchProvider('google')">
+                    <span class="ptab-icon">✦</span> Gemini
+                  </button>
+                </div>
+                <div class="model-selector-row">
+                  <label class="model-label">模型</label>
+                  <select id="modelSelect" onchange="onModelChange()"></select>
+                </div>
+                <div class="model-desc" id="modelDesc"></div>
+                <div class="apikey-row" style="margin-top:0.8rem">
+                  <input type="password" id="apikeyInput" placeholder="" autocomplete="off" />
+                  <button class="apikey-btn" id="apikeyBtn" onclick="saveApiKey()">儲存</button>
+                </div>
+                <div class="apikey-hint" id="apikeyHint"></div>
+                <div class="apikey-status" id="apikeyStatus"></div>
+              </div>
             </div>
-            <div class="model-desc" id="modelDesc"></div>
 
-            <!-- API Key 輸入 -->
-            <div class="apikey-row" style="margin-top:0.8rem">
-              <input type="password" id="apikeyInput" placeholder="" autocomplete="off" />
-              <button class="apikey-btn" id="apikeyBtn" onclick="saveApiKey()">儲存</button>
-            </div>
-            <div class="apikey-hint" id="apikeyHint"></div>
-            <div class="apikey-status" id="apikeyStatus"></div>
-          </div>
-
-          <div class="welcome-cards">
-            <div class="welcome-card" id="card1" onclick="selectPhaseCard(1)">
-              <div class="wc-badge">Phase 1</div>
-              <div class="wc-title">先期研究</div>
-              <div class="wc-desc">驗證創新構想可行性，以簡報審查為主</div>
-              <div class="wc-limit">補助上限 150 萬・6 個月</div>
-            </div>
-            <div class="welcome-card" id="card2" onclick="selectPhaseCard(2)">
-              <div class="wc-badge">Phase 2</div>
-              <div class="wc-title">研究開發</div>
-              <div class="wc-desc">進行產品雛形開發，完整計畫書審查</div>
-              <div class="wc-limit">補助上限 1,200 萬・24 個月</div>
-            </div>
-            <div class="welcome-card" id="card3" onclick="selectPhaseCard(3)">
-              <div class="wc-badge">Phase 2+</div>
-              <div class="wc-title">加值應用</div>
-              <div class="wc-desc">基於 Phase 2 成果，推進商業化規模化</div>
-              <div class="wc-limit">補助上限 600 萬</div>
-            </div>
-          </div>
-          <button class="welcome-start-btn" id="startBtn" onclick="startWriting()" disabled>
-            選擇階段後開始撰寫 →
-          </button>
+          </div><!-- /welcome-body -->
         </div>
       </div>
 
@@ -989,6 +1053,65 @@
 
 <script>
 // ══════════════════════════════════════════
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const isOpen = sidebar.classList.contains('open');
+  if (isOpen) {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('visible');
+  } else {
+    sidebar.classList.add('open');
+    overlay.classList.add('visible');
+  }
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('visible');
+}
+
+// ══════════════════════════════════════════
+// ── VERSION CHECK & AUTO-UPDATE ──
+// ══════════════════════════════════════════
+const CURRENT_VERSION = '1.0.3';
+const VERSION_KEY = 'sbir_app_version';
+
+function checkVersion() {
+  const lastVersion = localStorage.getItem(VERSION_KEY);
+  if (lastVersion && lastVersion !== CURRENT_VERSION) {
+    // 有新版本，顯示提示條
+    showUpdateBanner();
+  }
+  localStorage.setItem(VERSION_KEY, CURRENT_VERSION);
+}
+
+function showUpdateBanner() {
+  const banner = document.createElement('div');
+  banner.id = 'updateBanner';
+  banner.style.cssText = `
+    position: fixed; top: 60px; left: 0; right: 0; z-index: 999;
+    background: linear-gradient(90deg, #2c6e49, #3a8a5e);
+    color: white; padding: 0.6rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.85rem; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  `;
+  banner.innerHTML = `
+    <span>🎉 工具已更新至新版本 v${CURRENT_VERSION}，建議重新整理以獲得最佳體驗。</span>
+    <div style="display:flex;gap:0.8rem;align-items:center;">
+      <button onclick="location.reload(true)" style="
+        background:white; color:#2c6e49; border:none; border-radius:4px;
+        padding:0.3rem 0.9rem; font-weight:700; cursor:pointer; font-size:0.82rem;
+      ">立即重新整理</button>
+      <button onclick="document.getElementById('updateBanner').remove()" style="
+        background:none; border:none; color:rgba(255,255,255,0.7);
+        cursor:pointer; font-size:1.1rem; padding:0 4px;
+      ">✕</button>
+    </div>
+  `;
+  document.body.appendChild(banner);
+}
+
 // ── PROJECT MANAGEMENT ──
 // ══════════════════════════════════════════
 const PROJECTS_KEY = 'sbir_projects';
@@ -1052,6 +1175,7 @@ function switchProject(id) {
   // 更新 UI
   renderProjectList();
   updateSidebarPhase();
+  closeSidebar();
 
   if (project.phase) {
     document.getElementById('welcomeScreen').style.display = 'none';
@@ -1128,9 +1252,9 @@ function renderProjectList() {
   }
 
   list.innerHTML = projects.map(p => `
-    <li class="project-item ${p.id === activeId ? 'active' : ''}" onclick="switchProject('${p.id}')">
+    <li class="project-item ${p.id === activeId ? 'active' : ''}" onclick="switchProject('${p.id}')" style="max-width:228px;width:228px;">
       ${p.phaseLabel ? `<span class="project-item-phase">${p.phaseLabel}</span>` : ''}
-      <span class="project-item-name" title="${p.name}">${p.name}</span>
+      <span class="project-item-name" title="${p.name}">${p.name.length > 10 ? p.name.slice(0, 10) + '…' : p.name}</span>
       <span class="project-item-del" onclick="deleteProject('${p.id}', event)" title="刪除">✕</span>
     </li>
   `).join('');
@@ -1545,6 +1669,7 @@ function updateSidebarPhase() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  checkVersion();
   initApiKeyUI();
   initProjects();
 });
@@ -2284,7 +2409,8 @@ function renderStep() {
 
   const panel = document.getElementById('editorPanel');
   const contentFn = CONTENT[step.content];
-  panel.innerHTML = contentFn ? contentFn() : '<div class="form-group"><p style="color:#888">此步驟內容建置中...</p></div>';
+  const inner = contentFn ? contentFn() : '<div class="form-group"><p style="color:#888">此步驟內容建置中...</p></div>';
+  panel.innerHTML = `<div style="padding:1.5rem 2rem;flex:1;">${inner}</div>`;
   restoreAnswers();
 
   const isLast = state.currentStep === steps.length - 1;
