@@ -1116,9 +1116,12 @@
             <div class="ai-dot"></div>
             AI 撰寫助手
           </div>
-          <div class="ai-main-tabs">
-            <button class="ai-main-tab active" id="mainTab-write" onclick="switchMainTab('write')">✍️ 撰寫</button>
-            <button class="ai-main-tab" id="mainTab-chart" onclick="switchMainTab('chart')">📊 製圖</button>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button onclick="diagnosisApiKey()" title="診斷 API 連線" style="background:none;border:1px solid rgba(201,168,76,0.3);color:rgba(245,240,232,0.5);font-size:0.65rem;padding:2px 7px;border-radius:4px;cursor:pointer;" onmouseover="this.style.borderColor='#C9A84C';this.style.color='#C9A84C'" onmouseout="this.style.borderColor='rgba(201,168,76,0.3)';this.style.color='rgba(245,240,232,0.5)'">🔍 診斷</button>
+            <div class="ai-main-tabs">
+              <button class="ai-main-tab active" id="mainTab-write" onclick="switchMainTab('write')">✍️ 撰寫</button>
+              <button class="ai-main-tab" id="mainTab-chart" onclick="switchMainTab('chart')">📊 製圖</button>
+            </div>
           </div>
         </div>
 
@@ -1861,9 +1864,13 @@ function renderAiKeyWarning() {
 async function callLLM(prompt, systemPrompt) {
   const provider = getProvider();
   const model    = localStorage.getItem(MODEL_KEY) || PROVIDERS[provider].models.find(m=>m.default)?.id || PROVIDERS[provider].models[0].id;
-  const apiKey   = getApiKey(provider);
+  const rawKey   = getApiKey(provider);
+  const apiKey   = rawKey.trim(); // 防止空白污染
 
   if (!apiKey) throw new Error('NO_KEY');
+
+  // 檢查 key 是否含遮蔽字元（代表使用者沒重新輸入，讀到的是顯示用字串）
+  if (apiKey.includes('•')) throw new Error('API Key 顯示異常，請重新到首頁清空輸入框並重新貼上完整 Key');
 
   if (provider === 'anthropic') {
     const body = { model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] };
@@ -1879,7 +1886,7 @@ async function callLLM(prompt, systemPrompt) {
       body: JSON.stringify(body)
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
+    if (data.error) throw new Error(`[${data.error.type}] ${data.error.message}`);
     return data.content?.[0]?.text || '';
   }
 
@@ -1912,6 +1919,56 @@ async function callLLM(prompt, systemPrompt) {
   }
 
   throw new Error('未知的供應商');
+}
+
+// ── API Key 診斷工具 ──
+async function diagnosisApiKey() {
+  const provider = getProvider();
+  const rawKey = getApiKey(provider);
+  const apiKey = rawKey.trim();
+  const panel = document.getElementById('aiMessages');
+
+  const lines = [];
+  lines.push(`<strong>🔍 API Key 診斷報告</strong>`);
+  lines.push(`供應商：${provider}`);
+  lines.push(`Key 長度：${apiKey.length} 字元`);
+  lines.push(`Key 前8碼：${apiKey ? apiKey.slice(0,8) + '...' : '(空)'}`);
+  lines.push(`含遮蔽字元(•)：${apiKey.includes('•') ? '❌ 是 → 請重新貼上完整 Key' : '✅ 否'}`);
+  lines.push(`含空白字元：${/\s/.test(apiKey) ? '❌ 是 → Key 含多餘空白' : '✅ 否'}`);
+
+  if (provider === 'anthropic') {
+    lines.push(`格式正確(sk-ant-)：${apiKey.startsWith('sk-ant-') ? '✅' : '❌ Key 應以 sk-ant- 開頭'}`);
+  } else if (provider === 'openai') {
+    lines.push(`格式正確(sk-)：${apiKey.startsWith('sk-') ? '✅' : '❌ Key 應以 sk- 開頭'}`);
+  }
+
+  if (!apiKey || apiKey.includes('•') || /\s/.test(apiKey)) {
+    lines.push(`<br>⚠️ <strong>請重新設定 API Key：</strong><br>1. 點右上角 ☰ 開選單<br>2. 到首頁清空 Key 欄位<br>3. 重新貼上完整 API Key<br>4. 點「儲存」`);
+    const div = document.createElement('div');
+    div.className = 'msg msg-error';
+    div.innerHTML = lines.join('<br>');
+    panel.appendChild(div);
+    panel.scrollTop = 99999;
+    return;
+  }
+
+  // 嘗試真實 API 呼叫
+  lines.push(`<br>⏳ 測試連線中...`);
+  const div = document.createElement('div');
+  div.className = 'msg msg-ai';
+  div.innerHTML = lines.join('<br>');
+  panel.appendChild(div);
+  panel.scrollTop = 99999;
+
+  try {
+    const reply = await callLLM('請回覆「連線成功」四個字即可，不需要其他內容。');
+    div.innerHTML = lines.join('<br>').replace('⏳ 測試連線中...', `✅ <strong>連線成功！</strong>模型回覆：${reply}`);
+    div.className = 'msg msg-ai';
+  } catch(e) {
+    div.innerHTML = lines.join('<br>').replace('⏳ 測試連線中...', `❌ <strong>連線失敗：</strong>${e.message}<br><br>可能原因：<br>• Key 已失效或被撤銷<br>• 帳戶餘額不足<br>• 網路封鎖（請確認可訪問 api.anthropic.com）`);
+    div.className = 'msg msg-error';
+  }
+  panel.scrollTop = 99999;
 }
 
 
