@@ -3210,7 +3210,7 @@ ${userText}
 7. 絕對不要捏造公司資訊、不存在的專案或假數字`;
 
   try {
-    const reply = await callLLM(systemPrompt);
+    const reply = await callLLM(userText, systemPrompt);
     addAIMessage(reply.replace(/\n/g, '<br>'), 'ai');
 
     if (mode === 'draft' || mode === 'polish') {
