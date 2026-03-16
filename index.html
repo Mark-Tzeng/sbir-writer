@@ -807,6 +807,29 @@
   .welcome-right { display: flex; flex-direction: column; }
 
   /* ── API Key / Provider Box ── */
+  /* ── 免費額度區塊 ── */
+  .free-quota-box {
+    background: linear-gradient(135deg, rgba(201,168,76,0.12), rgba(74,103,65,0.12));
+    border: 1px solid rgba(201,168,76,0.35);
+    border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 0.8rem;
+  }
+  .fq-title { font-weight: 700; font-size: 0.9rem; color: var(--ink); margin-bottom: 0.6rem; }
+  .fq-bar-wrap { background: rgba(0,0,0,0.08); border-radius: 99px; height: 8px; overflow: hidden; margin-bottom: 0.4rem; }
+  .fq-bar { height: 100%; background: linear-gradient(90deg, var(--gold), var(--sage)); border-radius: 99px; transition: width 0.4s; }
+  .fq-label { font-size: 0.75rem; color: #666; margin-bottom: 0.8rem; }
+  .fq-use-btn {
+    width: 100%; padding: 0.55rem; border-radius: 7px; border: none;
+    background: linear-gradient(135deg, var(--gold), #b8963e);
+    color: var(--ink); font-weight: 700; font-size: 0.85rem; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .fq-use-btn:hover { opacity: 0.88; }
+  .fq-use-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .apikey-divider {
+    text-align: center; font-size: 0.7rem; color: #aaa;
+    margin: 0.5rem 0 0.8rem; letter-spacing: 0.05em;
+  }
+
   .apikey-box {
     background: #f9f7f0; border: 1.5px solid #e0d9c8; border-radius: 10px;
     padding: 1.2rem 1.4rem; margin-bottom: 1.8rem; text-align: left;
@@ -1076,7 +1099,18 @@
             <div class="welcome-right">
               <div class="welcome-section-label">設定 AI 供應商</div>
               <div class="apikey-box" id="apikeyBox">
-                <div class="apikey-desc">選擇偏好的 AI 供應商，填入對應 API Key。Key 僅存於瀏覽器本機，不外傳。</div>
+
+                <!-- 免費額度區塊 -->
+                <div class="free-quota-box" id="freeQuotaBox">
+                  <div class="fq-title">✨ 免費額度</div>
+                  <div class="fq-bar-wrap"><div class="fq-bar" id="fqBar"></div></div>
+                  <div class="fq-label" id="fqLabel"></div>
+                  <button class="fq-use-btn" id="fqUseBtn" onclick="activateFreeQuota()">使用免費額度開始撰寫</button>
+                </div>
+
+                <div class="apikey-divider">── 或使用自己的 API Key ──</div>
+
+                <div class="apikey-desc">填入 API Key 可無限制使用。Key 僅存於瀏覽器本機，不外傳。</div>
                 <div class="provider-tabs">
                   <button class="provider-tab active" id="tab-anthropic" onclick="switchProvider('anthropic')">
                     <span class="ptab-icon">◆</span> Claude
@@ -1841,6 +1875,8 @@ window.addEventListener('DOMContentLoaded', () => {
   initApiKeyUI();
   initProjects();
   initManualForm();
+  updateFreeQuotaUI();
+  renderFreeQuotaBadge();
 });
 
 // ── AI 面板：無 Key 警告 ──
@@ -1849,11 +1885,25 @@ function renderAiKeyWarning() {
   const panel = document.getElementById('aiMessages');
   const existing = document.getElementById('aiKeyWarning');
   if (existing) existing.remove();
-  if (!key) {
+  // 有自己的 Key 或啟用免費模式，都不顯示警告
+  if (!key && !isUsingFreeMode()) {
     const div = document.createElement('div');
     div.id = 'aiKeyWarning';
     div.className = 'ai-key-warning';
-    div.innerHTML = `⚠️ 尚未設定 API Key，AI 輔助功能無法使用。<br>請先回到<a href="#" onclick="document.getElementById('welcomeScreen').style.display='';return false;">首頁</a>設定您的 API Key。`;
+    div.innerHTML = `⚠️ 尚未設定 API Key。<br>請先回到<a href="#" onclick="switchMainTab('write');document.getElementById('welcomeScreen').style.display='flex';document.getElementById('editorPanel').style.display='none';return false;">首頁</a>啟用免費額度或填入自己的 API Key。`;
+    panel.prepend(div);
+  } else if (isUsingFreeMode() && getRemainingFreeQuota() > 0) {
+    // 免費模式：顯示剩餘次數提示
+    const div = document.createElement('div');
+    div.id = 'aiKeyWarning';
+    div.className = 'msg msg-system';
+    div.innerHTML = `✨ 免費模式：今日剩餘 <strong>${getRemainingFreeQuota()}</strong> 次呼叫`;
+    panel.prepend(div);
+  } else if (isUsingFreeMode() && getRemainingFreeQuota() <= 0) {
+    const div = document.createElement('div');
+    div.id = 'aiKeyWarning';
+    div.className = 'ai-key-warning';
+    div.innerHTML = `⚠️ 今日免費額度已用完，明天重置。或填入自己的 API Key 無限使用。`;
     panel.prepend(div);
   }
 }
@@ -1862,16 +1912,38 @@ function renderAiKeyWarning() {
 // ── SEND TO AI (多供應商路由) ──
 // ══════════════════════════════════════════
 async function callLLM(prompt, systemPrompt) {
-  const provider = getProvider();
-  const model    = localStorage.getItem(MODEL_KEY) || PROVIDERS[provider].models.find(m=>m.default)?.id || PROVIDERS[provider].models[0].id;
-  const rawKey   = getApiKey(provider);
-  const apiKey   = rawKey.trim(); // 防止空白污染
+  const provider  = getProvider();
+  const model     = localStorage.getItem(MODEL_KEY) || PROVIDERS[provider].models.find(m=>m.default)?.id || PROVIDERS[provider].models[0].id;
+  const userKey   = getApiKey(provider).trim();
+  const hasOwnKey = userKey && !userKey.includes('•');
 
-  if (!apiKey) throw new Error('NO_KEY');
+  // ── 免費模式：走 Cloudflare Worker ──
+  if (!hasOwnKey) {
+    if (!isUsingFreeMode()) throw new Error('NO_KEY');
+    if (getRemainingFreeQuota() <= 0) throw new Error('FREE_QUOTA_EXCEEDED');
 
-  // 檢查 key 是否含遮蔽字元（代表使用者沒重新輸入，讀到的是顯示用字串）
-  if (apiKey.includes('•')) throw new Error('API Key 顯示異常，請重新到首頁清空輸入框並重新貼上完整 Key');
+    // 檢查 Worker URL 是否已設定
+    if (WORKER_URL.includes('你的帳號')) {
+      throw new Error('WORKER_NOT_CONFIGURED');
+    }
 
+    const res = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, systemPrompt })
+    });
+
+    const data = await res.json();
+    if (res.status === 429) throw new Error('FREE_QUOTA_EXCEEDED');
+    if (data.error) throw new Error(data.error);
+
+    consumeFreeQuota();
+    updateFreeQuotaUI();
+    renderFreeQuotaBadge();
+    return data.text || '';
+  }
+
+  // ── 自訂 Key 模式：直連各供應商 ──
   if (provider === 'anthropic') {
     const body = { model, max_tokens: 1000, messages: [{ role: 'user', content: prompt }] };
     if (systemPrompt) body.system = systemPrompt;
@@ -1879,7 +1951,7 @@ async function callLLM(prompt, systemPrompt) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': userKey,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
@@ -1896,7 +1968,7 @@ async function callLLM(prompt, systemPrompt) {
     messages.push({ role: 'user', content: prompt });
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userKey}` },
       body: JSON.stringify({ model, max_tokens: 1000, messages })
     });
     const data = await res.json();
@@ -1908,7 +1980,7 @@ async function callLLM(prompt, systemPrompt) {
     const parts = [];
     if (systemPrompt) parts.push({ text: systemPrompt + '\n\n' });
     parts.push({ text: prompt });
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 1000 } })
@@ -1926,24 +1998,41 @@ async function diagnosisApiKey() {
   const provider = getProvider();
   const rawKey = getApiKey(provider);
   const apiKey = rawKey.trim();
+  const freeMode = isUsingFreeMode();
+  const freeRemaining = getRemainingFreeQuota();
   const panel = document.getElementById('aiMessages');
 
   const lines = [];
-  lines.push(`<strong>🔍 API Key 診斷報告</strong>`);
-  lines.push(`供應商：${provider}`);
-  lines.push(`Key 長度：${apiKey.length} 字元`);
-  lines.push(`Key 前8碼：${apiKey ? apiKey.slice(0,8) + '...' : '(空)'}`);
-  lines.push(`含遮蔽字元(•)：${apiKey.includes('•') ? '❌ 是 → 請重新貼上完整 Key' : '✅ 否'}`);
-  lines.push(`含空白字元：${/\s/.test(apiKey) ? '❌ 是 → Key 含多餘空白' : '✅ 否'}`);
+  lines.push(`<strong>🔍 API 連線診斷報告</strong>`);
 
-  if (provider === 'anthropic') {
-    lines.push(`格式正確(sk-ant-)：${apiKey.startsWith('sk-ant-') ? '✅' : '❌ Key 應以 sk-ant- 開頭'}`);
-  } else if (provider === 'openai') {
-    lines.push(`格式正確(sk-)：${apiKey.startsWith('sk-') ? '✅' : '❌ Key 應以 sk- 開頭'}`);
+  if (freeMode) {
+    lines.push(`模式：✨ 免費額度模式（Cloudflare Worker）`);
+    lines.push(`今日剩餘：${freeRemaining} / ${FREE_QUOTA_LIMIT} 次`);
+    const workerReady = !WORKER_URL.includes('你的帳號');
+    lines.push(`Worker 狀態：${workerReady ? '✅ 已設定' : '❌ 尚未設定 Worker URL'}`);
+    if (!workerReady) {
+      lines.push(`<br>⚠️ 請依照部署說明設定 Cloudflare Worker 後，更新 HTML 裡的 WORKER_URL。`);
+      const div = document.createElement('div');
+      div.className = 'msg msg-error';
+      div.innerHTML = lines.join('<br>');
+      panel.appendChild(div);
+      panel.scrollTop = 99999;
+      return;
+    }
+  } else {
+    lines.push(`模式：🔑 自訂 API Key`);
+    lines.push(`供應商：${provider}`);
+    lines.push(`Key 長度：${apiKey.length} 字元`);
+    lines.push(`Key 前8碼：${apiKey ? apiKey.slice(0,8) + '...' : '(空)'}`);
+    lines.push(`含遮蔽字元(•)：${apiKey.includes('•') ? '❌ → 請重新貼上完整 Key' : '✅ 否'}`);
+    lines.push(`含空白字元：${/\s/.test(apiKey) ? '❌ → Key 含多餘空白' : '✅ 否'}`);
+    if (provider === 'anthropic') lines.push(`格式(sk-ant-)：${apiKey.startsWith('sk-ant-') ? '✅' : '❌ 格式不符'}`);
+    else if (provider === 'openai') lines.push(`格式(sk-)：${apiKey.startsWith('sk-') ? '✅' : '❌ 格式不符'}`);
   }
 
-  if (!apiKey || apiKey.includes('•') || /\s/.test(apiKey)) {
-    lines.push(`<br>⚠️ <strong>請重新設定 API Key：</strong><br>1. 點右上角 ☰ 開選單<br>2. 到首頁清空 Key 欄位<br>3. 重新貼上完整 API Key<br>4. 點「儲存」`);
+  // 如果沒有任何可用的 key
+  if (!freeMode && (!apiKey || apiKey.includes('•') || /\s/.test(apiKey))) {
+    lines.push(`<br>⚠️ 請回首頁啟用免費額度，或重新填入完整 API Key。`);
     const div = document.createElement('div');
     div.className = 'msg msg-error';
     div.innerHTML = lines.join('<br>');
@@ -1952,7 +2041,17 @@ async function diagnosisApiKey() {
     return;
   }
 
-  // 嘗試真實 API 呼叫
+  if (freeMode && freeRemaining <= 0) {
+    lines.push(`<br>⚠️ 今日免費額度已用完，請明天再試或填入自己的 Key。`);
+    const div = document.createElement('div');
+    div.className = 'msg msg-error';
+    div.innerHTML = lines.join('<br>');
+    panel.appendChild(div);
+    panel.scrollTop = 99999;
+    return;
+  }
+
+  // 測試真實連線
   lines.push(`<br>⏳ 測試連線中...`);
   const div = document.createElement('div');
   div.className = 'msg msg-ai';
@@ -1962,10 +2061,14 @@ async function diagnosisApiKey() {
 
   try {
     const reply = await callLLM('請回覆「連線成功」四個字即可，不需要其他內容。');
-    div.innerHTML = lines.join('<br>').replace('⏳ 測試連線中...', `✅ <strong>連線成功！</strong>模型回覆：${reply}`);
+    div.innerHTML = lines.join('<br>').replace('⏳ 測試連線中...', `✅ <strong>連線成功！</strong>AI 回覆：${reply.trim()}`);
     div.className = 'msg msg-ai';
   } catch(e) {
-    div.innerHTML = lines.join('<br>').replace('⏳ 測試連線中...', `❌ <strong>連線失敗：</strong>${e.message}<br><br>可能原因：<br>• Key 已失效或被撤銷<br>• 帳戶餘額不足<br>• 網路封鎖（請確認可訪問 api.anthropic.com）`);
+    let hint = '';
+    if (e.message.includes('credit')) hint = '帳戶餘額不足，請至 console.anthropic.com 儲值';
+    else if (e.message.includes('invalid_api_key') || e.message.includes('invalid x-api-key')) hint = 'Key 無效，請重新產生';
+    else hint = '請確認網路可訪問 api.anthropic.com';
+    div.innerHTML = lines.join('<br>').replace('⏳ 測試連線中...', `❌ <strong>連線失敗：</strong>${e.message}<br>💡 ${hint}`);
     div.className = 'msg msg-error';
   }
   panel.scrollTop = 99999;
@@ -2730,7 +2833,94 @@ function toggleCheck(el) {
 
 // ── AI MODE ──
 // ══════════════════════════════════════════
-// ── AI CHART ASSISTANT ──
+// ── 免費額度系統 ──
+// ══════════════════════════════════════════
+const FREE_QUOTA_KEY   = 'sbir_free_quota';
+const FREE_QUOTA_DATE  = 'sbir_free_date';
+const FREE_QUOTA_LIMIT = 30; // 每日免費次數（由 Worker 端控制）
+const FREE_MODE_KEY    = 'sbir_use_free';
+
+// ▼▼▼ 部署 Worker 後，把你的 Worker URL 填在這裡 ▼▼▼
+const WORKER_URL = 'https://sbir-proxy.marktzeng.workers.dev/api/chat';
+// ▲▲▲ 例如：'https://sbir-proxy.john.workers.dev/api/chat' ▲▲▲
+
+function getFreeQuotaToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  const savedDate = localStorage.getItem(FREE_QUOTA_DATE);
+  if (savedDate !== today) {
+    localStorage.setItem(FREE_QUOTA_DATE, today);
+    localStorage.setItem(FREE_QUOTA_KEY, '0');
+    return 0;
+  }
+  return parseInt(localStorage.getItem(FREE_QUOTA_KEY) || '0');
+}
+
+function getRemainingFreeQuota() {
+  return Math.max(0, FREE_QUOTA_LIMIT - getFreeQuotaToday());
+}
+
+function consumeFreeQuota() {
+  const used = getFreeQuotaToday();
+  localStorage.setItem(FREE_QUOTA_KEY, String(used + 1));
+}
+
+function isUsingFreeMode() {
+  return localStorage.getItem(FREE_MODE_KEY) === 'true';
+}
+
+function activateFreeQuota() {
+  localStorage.setItem(FREE_MODE_KEY, 'true');
+  updateFreeQuotaUI();
+  // 直接跳到開始撰寫（如果已選 Phase）
+  if (state.phase) {
+    startWriting();
+  } else {
+    // 提示選 Phase
+    const btn = document.getElementById('fqUseBtn');
+    btn.textContent = '✅ 已啟用！請選擇申請階段後開始';
+    setTimeout(() => { btn.textContent = '使用免費額度（已啟用）'; }, 3000);
+  }
+}
+
+function updateFreeQuotaUI() {
+  const remaining = getRemainingFreeQuota();
+  const used = getFreeQuotaToday();
+  const bar = document.getElementById('fqBar');
+  const label = document.getElementById('fqLabel');
+  const btn = document.getElementById('fqUseBtn');
+  if (!bar) return;
+
+  const pct = (remaining / FREE_QUOTA_LIMIT) * 100;
+  bar.style.width = pct + '%';
+  bar.style.background = remaining > 5
+    ? 'linear-gradient(90deg, #C9A84C, #4A6741)'
+    : remaining > 2
+    ? 'linear-gradient(90deg, #C9A84C, #e67e22)'
+    : 'linear-gradient(90deg, #e74c3c, #c0392b)';
+
+  if (remaining === 0) {
+    label.textContent = `今日免費額度已用完（${used}/${FREE_QUOTA_LIMIT}），明天重置`;
+    btn.disabled = true;
+    btn.textContent = '今日額度已用完，請明天再試';
+  } else if (isUsingFreeMode()) {
+    label.textContent = `今日剩餘 ${remaining} 次免費呼叫（已用 ${used}/${FREE_QUOTA_LIMIT}）`;
+    btn.textContent = '✅ 免費模式使用中';
+    btn.disabled = false;
+  } else {
+    label.textContent = `每日 ${FREE_QUOTA_LIMIT} 次免費體驗，今日剩餘 ${remaining} 次`;
+    btn.textContent = '使用免費額度開始撰寫';
+    btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════
+// ── AI 面板顯示剩餘免費次數 ──
+// ══════════════════════════════════════════
+function renderFreeQuotaBadge() {
+  // 不顯示剩餘次數徽章
+}
+
+
 // ══════════════════════════════════════════
 let chartState = {
   aiType: 'bar',
@@ -3279,7 +3469,11 @@ ${userText}
     }
   } catch(e) {
     if (e.message === 'NO_KEY') {
-      addAIMessage('⚠️ 請先在首頁設定 API Key 才能使用 AI 功能。', 'error');
+      addAIMessage('⚠️ 請先在首頁啟用免費額度，或填入自己的 API Key。', 'error');
+    } else if (e.message === 'FREE_QUOTA_EXCEEDED') {
+      addAIMessage('⚠️ 今日免費額度已用完（30次/天），請明天再試，或填入自己的 API Key 無限使用。', 'error');
+    } else if (e.message === 'WORKER_NOT_CONFIGURED') {
+      addAIMessage('⚠️ 免費服務尚未部署，請聯絡管理員，或填入自己的 API Key 使用。', 'error');
     } else {
       addAIMessage(`⚠️ 連線錯誤：${e.message || '請確認網路與 API Key 是否正確。'}`, 'error');
     }
