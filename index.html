@@ -3551,36 +3551,19 @@ async function exportToDocx() {
     const phase = state.phase;
     const phaseName = {1:'先期研究(Phase 1)', 2:'研究開發(Phase 2)', 3:'加值應用(Phase 2+)'}[phase];
     const EMPTY = '[待填寫]';
+    // 單 key 取值
     const v = (key) => (a[key] && String(a[key]).trim()) ? String(a[key]) : EMPTY;
+    // 多 key 備援：取第一個有值的
+    const vv = (...keys) => { for (const k of keys) { if (a[k] && String(a[k]).trim()) return String(a[k]); } return EMPTY; };
 
     const T = (text, opts={}) => new TextRun({ text: String(text || ''), font: '標楷體', ...opts });
-
-    const para = (text, opts={}) => new Paragraph({
-      children: [T(text)],
-      spacing: { after: 160 },
-      ...opts
-    });
-
-    const h1 = (text) => new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      children: [T(text, { bold: true, size: 32 })],
-      spacing: { before: 400, after: 200 },
-    });
-
-    const h2 = (text) => new Paragraph({
-      heading: HeadingLevel.HEADING_2,
-      children: [T(text, { bold: true, size: 28 })],
-      spacing: { before: 280, after: 140 },
-    });
-
+    const para = (text, opts={}) => new Paragraph({ children: [T(text)], spacing: { after: 160 }, ...opts });
+    const h1 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: [T(text, { bold: true, size: 32 })], spacing: { before: 400, after: 200 } });
+    const h2 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [T(text, { bold: true, size: 28 })], spacing: { before: 280, after: 140 } });
     const field = (label, value) => new Paragraph({
-      children: [
-        T(label + '：', { bold: true }),
-        T(value !== EMPTY ? value : EMPTY, value !== EMPTY ? {} : { color: 'CC0000' })
-      ],
+      children: [ T(label + '：', { bold: true }), T(value, value !== EMPTY ? {} : { color: 'CC0000' }) ],
       spacing: { after: 120 }
     });
-
     const blank = () => new Paragraph({ text: '', spacing: { after: 160 } });
     const pageBreak = () => new Paragraph({ pageBreakBefore: true, text: '' });
 
@@ -3588,9 +3571,9 @@ async function exportToDocx() {
     const cover = [
       para('小型企業創新研發計畫', { alignment: AlignmentType.CENTER, spacing: { before: 800, after: 200 } }),
       new Paragraph({ children: [T(phaseName, { bold: true, size: 36 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
-      new Paragraph({ children: [T(v('projectName'), { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
-      field('公司名稱', v('companyName')),
-      field('計畫期間', v('projectPeriod')),
+      new Paragraph({ children: [T(vv('plan_name','p2_name'), { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
+      field('公司名稱', v('company_name')),
+      field('計畫期間', vv('period','p2_period')),
       blank(),
       para('計畫主辦單位：經濟部中小及新創企業署', { alignment: AlignmentType.CENTER }),
       para('中 華 民 國　　　年　　月', { alignment: AlignmentType.CENTER }),
@@ -3599,99 +3582,124 @@ async function exportToDocx() {
     // ── 公司基本資料 ──
     const company = [
       h1('申請公司基本資料'),
-      field('公司名稱', v('companyName')),
-      field('創立日期', v('foundedDate')),
-      field('統一編號', v('taxId')),
-      field('公司地址', v('companyAddress')),
-      field('資本額', v('capital')),
-      field('員工人數', v('employees')),
-      field('主要產品/服務', v('mainProduct')),
+      field('公司名稱', v('company_name')),
+      field('創立日期', v('founded')),
+      field('實收資本額', v('capital')),
+      field('主要業務', v('business')),
       blank(),
+      h2('公司優勢與核心技術'),
+      para(v('strengths')),
+      blank(),
+      h2('主要產品與服務'),
+      para(v('products')),
+      blank(),
+      h2('研發成果與獎項'),
+      para(v('rnd_results')),
     ];
 
     // ── 計畫摘要 ──
     const summary = [
       h1('計畫摘要'),
-      field('計畫名稱', v('projectName')),
-      field('計畫主持人', v('piName')),
-      field('計畫期間', v('projectPeriod')),
+      field('計畫名稱', vv('plan_name','p2_name')),
+      field('計畫主持人', v('pi_name')),
+      field('計畫期間', vv('period','p2_period')),
       blank(),
-      h2('計畫摘要說明'),
-      para(v('summary') || v('abstract')),
+      h2('摘要說明'),
+      para(v('summary')),
       blank(),
       h2('創新重點'),
-      para(v('innovation') || v('innovationDesc')),
+      para(vv('innov_key','innovation_desc','solution')),
     ];
 
     // ── 計畫內容 ──
+    const innov1Block = (v('innov1_title') !== EMPTY) ? [
+      new Paragraph({ children: [T('創新點一：' + v('innov1_title'), { bold: true })], spacing: { after: 80 } }),
+      para(v('innov1')), blank(),
+    ] : [];
+    const innov2Block = (v('innov2_title') !== EMPTY) ? [
+      new Paragraph({ children: [T('創新點二：' + v('innov2_title'), { bold: true })], spacing: { after: 80 } }),
+      para(v('innov2')), blank(),
+    ] : [];
+
     const content = [
       h1('計畫內容'),
-      h2('一、問題陳述與研發目標'),
-      para(v('problemStatement') || v('problem')),
+      h2('一、問題陳述'),
+      para(v('problem')),
       blank(),
-      h2('二、創新性論述'),
-      para(v('innovationStatement') || v('innovationDetail')),
+      h2('二、現有方案缺口'),
+      para(v('current_gap')),
       blank(),
-      h2('三、技術研發方法'),
-      para(v('methodology') || v('techMethod')),
+      h2('三、創新解決方案'),
+      para(v('solution')),
       blank(),
-      h2('四、預期成果'),
-      para(v('expectedOutcome') || v('outcome')),
+      h2('四、創新性論述'),
+      ...innov1Block,
+      ...innov2Block,
+      h2('五、競爭優勢與技術壁壘'),
+      para(vv('barrier','compare')),
       blank(),
-      h2('五、市場分析'),
-      para(v('marketAnalysis') || v('market')),
+      h2('六、技術可行性'),
+      para(v('feasibility')),
       blank(),
-      h2('六、商業化計畫'),
-      para(v('commercialization') || v('bizPlan')),
+      h2('七、研發方法'),
+      para(v('method')),
+      blank(),
+      h2('八、預期目標'),
+      para(vv('objectives','expected_benefits')),
+      blank(),
+      h2('九、市場分析'),
+      field('目標市場規模', v('market_size')),
+      para(vv('target','competitive')),
+      blank(),
+      h2('十、商業化計畫'),
+      para(vv('commercialize','bizmodel')),
     ];
 
     // ── 智財分析 ──
     const ip = [
       h1('智財分析'),
-      para(v('ipAnalysis') || v('ip')),
+      h2('一、智財來源'),
+      para(v('ip_source')),
+      blank(),
+      h2('二、智財佈局策略'),
+      para(v('ip_strategy')),
+      blank(),
+      h2('三、智財分析'),
+      para(v('ip_analysis')),
     ];
 
     // ── 執行計畫與經費 ──
     const execution = [
       h1('計畫執行與經費'),
-      h2('一、執行時程'),
-      para(v('schedule') || v('milestone')),
+      h2('一、執行時程與查核點'),
+      para(v('milestones')),
       blank(),
-      h2('二、研發團隊'),
-      para(v('teamMembers') || v('team')),
+      h2('二、計畫主持人'),
+      field('姓名', v('pi_name')),
+      para(vv('pi_detail','pi_bg')),
       blank(),
-      h2('三、經費規劃'),
-      field('計畫總經費', v('totalBudget') + ' 千元'),
-      field('補助款（≦50%）', v('subsidyAmount') + ' 千元'),
-      field('自籌款', v('selfFundAmount') + ' 千元'),
+      h2('三、研發團隊'),
+      para(vv('team_members','rnd_team')),
       blank(),
-      field('人事費（≦60%）', v('personnelCost') + ' 千元'),
-      field('消耗性器材費', v('materialCost') + ' 千元'),
-      field('設備使用費', v('equipmentCost') + ' 千元'),
-      field('委託研究費（≦30%）', v('outsourceCost') + ' 千元'),
-      field('差旅費', v('travelCost') + ' 千元'),
-      field('專利申請費', v('patentCost') + ' 千元'),
+      h2('四、經費規劃'),
+      field('計畫總經費', vv('total_budget','budget_total') + ' 千元'),
+      field('補助款（≦50%）', v('budget_subsidy') + ' 千元'),
+      blank(),
+      field('人事費（≦60%）', vv('budget_personnel','personnel') + ' 千元'),
+      field('消耗性器材費', vv('budget_materials','materials') + ' 千元'),
+      field('設備使用費', v('budget_equipment') + ' 千元'),
+      field('其他費用', v('other_cost') + ' 千元'),
     ];
 
     const doc = new Document({
       sections: [{
-        properties: {
-          page: {
-            size: { width: 11906, height: 16838 },
-            margin: { top: 1440, right: 1260, bottom: 1440, left: 1260 }
-          }
-        },
+        properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1260, bottom: 1440, left: 1260 } } },
         children: [
-          ...cover,
-          pageBreak(),
-          ...company,
-          pageBreak(),
-          ...summary,
-          pageBreak(),
-          ...content,
-          pageBreak(),
-          ...ip,
-          pageBreak(),
+          ...cover, pageBreak(),
+          ...company, pageBreak(),
+          ...summary, pageBreak(),
+          ...content, pageBreak(),
+          ...ip, pageBreak(),
           ...execution,
         ]
       }]
@@ -3702,7 +3710,7 @@ async function exportToDocx() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const projectName = (a['projectName'] && String(a['projectName']).trim()) ? String(a['projectName']) : '未命名計畫';
+    const projectName = vv('plan_name','p2_name') !== '[待填寫]' ? vv('plan_name','p2_name') : '未命名計畫';
     link.download = `SBIR_${phaseName}_${projectName}_${new Date().toISOString().slice(0,10)}.docx`;
     document.body.appendChild(link);
     link.click();
