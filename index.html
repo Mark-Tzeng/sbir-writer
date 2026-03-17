@@ -1039,9 +1039,6 @@
           <div class="progress-fill" id="progressFill" style="width:0%"></div>
         </div>
       </div>
-      <button class="export-doc-btn" id="exportDocBtn" onclick="exportToDocx()">
-        📄 輸出 SBIR 計畫書 (.docx)
-      </button>
     </div>
   </aside>
 
@@ -1247,6 +1244,11 @@
       <button class="nav-btn nav-btn-prev" onclick="prevStep()">← 上一步</button>
       <span style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#aaa" id="stepCounter"></span>
       <button class="nav-btn nav-btn-next" id="nextBtn" onclick="nextStep()">下一步 →</button>
+    </div>
+    <div id="exportRow" style="display:none;padding:0.6rem 1.5rem;background:#fff;border-top:1px solid var(--border);text-align:center;">
+      <button class="export-doc-btn visible" id="exportDocBtn" onclick="exportToDocx()" style="display:inline-block;width:auto;padding:0.6rem 2rem;">
+        📄 輸出 SBIR 計畫書 (.docx)
+      </button>
     </div>
   </main>
 </div>
@@ -2718,11 +2720,11 @@ function updateProgress() {
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('stepCounter').textContent = `步驟 ${state.currentStep+1} / ${steps.length}`;
 
-  // 顯示輸出按鈕（所有步驟都完成時）
-  const exportBtn = document.getElementById('exportDocBtn');
-  if (exportBtn) {
-    const allDone = steps.every(s => state.answers['_done_'+s.id]);
-    exportBtn.classList.toggle('visible', allDone || done >= steps.length - 1);
+  // 顯示輸出按鈕（到最後一步時）
+  const exportRow = document.getElementById('exportRow');
+  if (exportRow) {
+    const isLastStep = state.currentStep >= steps.length - 1;
+    exportRow.style.display = isLastStep ? 'block' : 'none';
   }
 }
 
@@ -3519,246 +3521,192 @@ async function exportToDocx() {
   btn.disabled = true;
 
   try {
-    // 動態載入 docx.js
+    // 動態載入 docx.js（多重 CDN 備援）
     if (!window.docx) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js';
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
+      const cdnList = [
+        'https://unpkg.com/docx@8.5.0/build/index.umd.js',
+        'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js',
+      ];
+      let loaded = false;
+      for (const src of cdnList) {
+        try {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+          });
+          if (window.docx) { loaded = true; break; }
+        } catch(e) { /* 嘗試下一個 */ }
+      }
+      if (!loaded) throw new Error('無法載入 docx.js，請重新整理頁面後再試');
     }
 
     const { Document, Packer, Paragraph, TextRun, HeadingLevel,
-            AlignmentType, BorderStyle, Table, TableRow, TableCell,
-            WidthType, ShadingType, PageNumber, Footer } = window.docx;
+            AlignmentType, BorderStyle } = window.docx;
 
     const a = state.answers;
     const phase = state.phase;
     const phaseName = {1:'先期研究(Phase 1)', 2:'研究開發(Phase 2)', 3:'加值應用(Phase 2+)'}[phase];
-    const T = (text, opts={}) => new TextRun({ text: String(text || ''), ...opts });
     const EMPTY = '[待填寫]';
-    const v = (key) => (a[key] && String(a[key]).trim()) ? a[key] : EMPTY;
+    const v = (key) => (a[key] && String(a[key]).trim()) ? String(a[key]) : EMPTY;
 
-    // ── 輔助：正文段落 ──
-    const bodyPara = (text, opts={}) => new Paragraph({
+    const T = (text, opts={}) => new TextRun({ text: String(text || ''), font: '標楷體', ...opts });
+
+    const para = (text, opts={}) => new Paragraph({
       children: [T(text)],
       spacing: { after: 160 },
       ...opts
     });
 
-    // ── 輔助：標題 ──
     const h1 = (text) => new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [T(text, { bold: true })],
+      children: [T(text, { bold: true, size: 32 })],
       spacing: { before: 400, after: 200 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'C9A84C', space: 4 } }
-    });
-    const h2 = (text) => new Paragraph({
-      heading: HeadingLevel.HEADING_2,
-      children: [T(text, { bold: true })],
-      spacing: { before: 280, after: 140 },
-    });
-    const h3 = (text) => new Paragraph({
-      children: [T(text, { bold: true, underline: {} })],
-      spacing: { before: 200, after: 100 },
     });
 
-    // ── 輔助：標籤＋內容行 ──
-    const labelLine = (label, value) => new Paragraph({
+    const h2 = (text) => new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      children: [T(text, { bold: true, size: 28 })],
+      spacing: { before: 280, after: 140 },
+    });
+
+    const field = (label, value) => new Paragraph({
       children: [
         T(label + '：', { bold: true }),
-        T(value || EMPTY, value ? {} : { color: 'E53935' })
+        T(value !== EMPTY ? value : EMPTY, value !== EMPTY ? {} : { color: 'CC0000' })
       ],
       spacing: { after: 120 }
     });
 
-    // ── 封面 ──
-    const coverChildren = [
-      new Paragraph({ children: [T('限  閱', { bold: true, size: 20, color: '888888' })], alignment: AlignmentType.RIGHT }),
-      new Paragraph({ text: '', spacing: { after: 800 } }),
-      new Paragraph({ children: [T('附件A', { bold: true, size: 24 })], alignment: AlignmentType.CENTER }),
-      new Paragraph({ text: '' }),
-      new Paragraph({ children: [T('小型企業創新研發計畫', { bold: true, size: 36 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
-      new Paragraph({ children: [T('■ ' + phaseName, { bold: true, size: 24 })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
-      new Paragraph({ children: [T('＜' + v('projectName') + '＞', { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
-      labelLine('計畫期間', v('projectPeriod')),
-      labelLine('公司名稱', v('companyName')),
-      new Paragraph({ text: '' }),
-      new Paragraph({ children: [T('計畫管理單位：財團法人中衛發展中心')], spacing: { after: 80 } }),
-      new Paragraph({ children: [T('計畫主辦單位：經濟部中小及新創企業署')], spacing: { after: 400 } }),
-      new Paragraph({ children: [T('中 華 民 國　　年　　月')], alignment: AlignmentType.CENTER }),
-    ];
+    const blank = () => new Paragraph({ text: '', spacing: { after: 160 } });
+    const pageBreak = () => new Paragraph({ pageBreakBefore: true, text: '' });
 
-    // ── 計畫申請表 ──
-    const applicationChildren = [
-      h1('計畫申請表'),
-      h2('一、申請計畫基本資料'),
-      labelLine('計畫名稱', v('projectName')),
-      labelLine('計畫期間', v('projectPeriod')),
-      labelLine('公司名稱', v('companyName')),
-      labelLine('通訊地址', v('companyAddress')),
-      labelLine('計畫主持人', v('piName')),
-      labelLine('聯絡電話', v('piPhone')),
-      labelLine('電子信箱', v('piEmail')),
-      labelLine('計畫總經費', v('totalBudget') + ' 千元'),
-      labelLine('補助款', v('subsidyAmount') + ' 千元'),
-      labelLine('自籌款', v('selfFundAmount') + ' 千元'),
-      new Paragraph({ text: '' }),
-      h2('五、主要關鍵核心技術'),
-      bodyPara(v('coretech')),
+    // ── 封面 ──
+    const cover = [
+      para('小型企業創新研發計畫', { alignment: AlignmentType.CENTER, spacing: { before: 800, after: 200 } }),
+      new Paragraph({ children: [T(phaseName, { bold: true, size: 36 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
+      new Paragraph({ children: [T(v('projectName'), { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
+      field('公司名稱', v('companyName')),
+      field('計畫期間', v('projectPeriod')),
+      blank(),
+      para('計畫主辦單位：經濟部中小及新創企業署', { alignment: AlignmentType.CENTER }),
+      para('中 華 民 國　　　年　　月', { alignment: AlignmentType.CENTER }),
     ];
 
     // ── 公司基本資料 ──
-    const companyChildren = [
-      h1('申請公司基本資料表'),
-      labelLine('公司名稱', v('companyName')),
-      labelLine('創立日期', v('foundedDate')),
-      labelLine('統一編號', v('taxId')),
-      labelLine('負責人', v('ceoName')),
-      labelLine('實收資本額', v('capital') + ' 千元'),
-      labelLine('前一年度營業額', v('revenue') + ' 千元'),
-      labelLine('員工人數', v('employees') + ' 人'),
-      labelLine('主要營業項目', v('bizScope')),
+    const company = [
+      h1('申請公司基本資料'),
+      field('公司名稱', v('companyName')),
+      field('創立日期', v('foundedDate')),
+      field('統一編號', v('taxId')),
+      field('公司地址', v('companyAddress')),
+      field('資本額', v('capital')),
+      field('員工人數', v('employees')),
+      field('主要產品/服務', v('mainProduct')),
+      blank(),
     ];
 
     // ── 計畫摘要 ──
-    const summaryChildren = [
-      h1('計畫書摘要表'),
-      h2('計畫內容摘要'),
-      bodyPara(v('abstract') || v('motivation')),
-      h2('計畫創新重點'),
-      bodyPara(v('innovation') || v('innovationPoints')),
-      h2('執行優勢'),
-      bodyPara(v('advantage') || v('teamStrength')),
-      h2('預期效益（結案三年內）'),
-      labelLine('增加產值', v('expectedRevenue') + ' 千元'),
-      labelLine('產出新產品或服務', v('newProducts') + ' 項'),
-      labelLine('投入研發費用', v('rdInvestment') + ' 千元'),
-      labelLine('增加就業人數', v('newEmployees') + ' 人'),
-      labelLine('發明專利', v('patents') + ' 件'),
+    const summary = [
+      h1('計畫摘要'),
+      field('計畫名稱', v('projectName')),
+      field('計畫主持人', v('piName')),
+      field('計畫期間', v('projectPeriod')),
+      blank(),
+      h2('計畫摘要說明'),
+      para(v('summary') || v('abstract')),
+      blank(),
+      h2('創新重點'),
+      para(v('innovation') || v('innovationDesc')),
     ];
 
-    // ── 貳、計畫內容 ──
-    const contentChildren = [
-      h1('貳、計畫內容與實施方式'),
-      h2('一、研發動機及競爭力分析'),
-      h3('（一）研發動機'),
-      bodyPara(v('motivation') || v('problem')),
-      h3('（二）競爭力分析'),
-      bodyPara(v('competition') || v('competitorAnalysis')),
-      h3('（三）可行性分析'),
-      bodyPara(v('feasibility')),
-      new Paragraph({ text: '' }),
-      h2('二、計畫目標與規格'),
-      h3('（一）計畫目標'),
-      bodyPara(v('goal') || v('projectGoal')),
-      h3('（二）創新性說明'),
-      bodyPara(v('innovation') || v('innovationPoints')),
-      h3('（三）功能規格／服務模式'),
-      bodyPara(v('spec') || v('techSpec')),
-      h3('（四）主要關鍵技術或服務'),
-      bodyPara(v('coretech') || v('keytech')),
-      h3('（五）技術應用範圍'),
-      bodyPara(v('applicationScope') || v('marketScope')),
-      new Paragraph({ text: '' }),
-      h2('三、實施方式'),
-      h3('（一）執行步驟及方法'),
-      bodyPara(v('implementation') || v('method')),
-      h3('（二）技術及智慧財產權來源'),
-      bodyPara(v('ipSource') || v('techSource')),
-      new Paragraph({ text: '' }),
-      h2('五、預期效益'),
-      bodyPara(v('benefit') || v('expectedBenefit')),
+    // ── 計畫內容 ──
+    const content = [
+      h1('計畫內容'),
+      h2('一、問題陳述與研發目標'),
+      para(v('problemStatement') || v('problem')),
+      blank(),
+      h2('二、創新性論述'),
+      para(v('innovationStatement') || v('innovationDetail')),
+      blank(),
+      h2('三、技術研發方法'),
+      para(v('methodology') || v('techMethod')),
+      blank(),
+      h2('四、預期成果'),
+      para(v('expectedOutcome') || v('outcome')),
+      blank(),
+      h2('五、市場分析'),
+      para(v('marketAnalysis') || v('market')),
+      blank(),
+      h2('六、商業化計畫'),
+      para(v('commercialization') || v('bizPlan')),
     ];
 
     // ── 智財分析 ──
-    const ipChildren = [
-      h1('參、智財分析'),
-      bodyPara(v('ipAnalysis') || v('ip')),
+    const ip = [
+      h1('智財分析'),
+      para(v('ipAnalysis') || v('ip')),
     ];
 
-    // ── 計畫執行與經費 ──
-    const executionChildren = [
-      h1('肆、計畫執行查核點說明與經費需求'),
-      h2('一、預定進度及查核點'),
-      bodyPara(v('milestone') || v('schedule')),
-      new Paragraph({ text: '' }),
-      h2('三、經費需求總表'),
-      labelLine('計畫總經費', v('totalBudget') + ' 千元'),
-      labelLine('補助款（≦50%）', v('subsidyAmount') + ' 千元'),
-      labelLine('自籌款', v('selfFundAmount') + ' 千元'),
-      new Paragraph({ text: '' }),
-      labelLine('人事費（≦60%）', v('personnelCost') + ' 千元'),
-      labelLine('消耗性器材及原材料費', v('materialCost') + ' 千元'),
-      labelLine('設備使用費', v('equipmentCost') + ' 千元'),
-      labelLine('技術移轉及委託費', v('outsourceCost') + ' 千元'),
-      labelLine('差旅費', v('travelCost') + ' 千元'),
-      labelLine('專利申請費', v('patentCost') + ' 千元'),
-      new Paragraph({ text: '' }),
-      h2('二、研發人員'),
-      bodyPara(v('teamMembers') || v('team')),
-    ];
-
-    // ── 組合文件 ──
-    const allChildren = [
-      ...coverChildren,
-      new Paragraph({ pageBreakBefore: true, text: '' }),
-      ...applicationChildren,
-      new Paragraph({ pageBreakBefore: true, text: '' }),
-      ...companyChildren,
-      new Paragraph({ pageBreakBefore: true, text: '' }),
-      ...summaryChildren,
-      new Paragraph({ pageBreakBefore: true, text: '' }),
-      ...contentChildren,
-      new Paragraph({ pageBreakBefore: true, text: '' }),
-      ...ipChildren,
-      new Paragraph({ pageBreakBefore: true, text: '' }),
-      ...executionChildren,
+    // ── 執行計畫與經費 ──
+    const execution = [
+      h1('計畫執行與經費'),
+      h2('一、執行時程'),
+      para(v('schedule') || v('milestone')),
+      blank(),
+      h2('二、研發團隊'),
+      para(v('teamMembers') || v('team')),
+      blank(),
+      h2('三、經費規劃'),
+      field('計畫總經費', v('totalBudget') + ' 千元'),
+      field('補助款（≦50%）', v('subsidyAmount') + ' 千元'),
+      field('自籌款', v('selfFundAmount') + ' 千元'),
+      blank(),
+      field('人事費（≦60%）', v('personnelCost') + ' 千元'),
+      field('消耗性器材費', v('materialCost') + ' 千元'),
+      field('設備使用費', v('equipmentCost') + ' 千元'),
+      field('委託研究費（≦30%）', v('outsourceCost') + ' 千元'),
+      field('差旅費', v('travelCost') + ' 千元'),
+      field('專利申請費', v('patentCost') + ' 千元'),
     ];
 
     const doc = new Document({
-      styles: {
-        default: {
-          document: { run: { font: '標楷體', size: 24, color: '1A1A1A' } }
-        },
-        paragraphStyles: [
-          { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true,
-            run: { size: 32, bold: true, font: '標楷體', color: '1A1005' },
-            paragraph: { spacing: { before: 400, after: 200 }, outlineLevel: 0 } },
-          { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true,
-            run: { size: 28, bold: true, font: '標楷體', color: '2C2000' },
-            paragraph: { spacing: { before: 280, after: 140 }, outlineLevel: 1 } },
-        ]
-      },
       sections: [{
         properties: {
           page: {
-            size: { width: 11906, height: 16838 }, // A4
+            size: { width: 11906, height: 16838 },
             margin: { top: 1440, right: 1260, bottom: 1440, left: 1260 }
           }
         },
-        footers: {
-          default: new Footer({
-            children: [new Paragraph({
-              alignment: AlignmentType.CENTER,
-              children: [T('第 '), new TextRun({ children: [PageNumber.CURRENT] }), T(' 頁')]
-            })]
-          })
-        },
-        children: allChildren
+        children: [
+          ...cover,
+          pageBreak(),
+          ...company,
+          pageBreak(),
+          ...summary,
+          pageBreak(),
+          ...content,
+          pageBreak(),
+          ...ip,
+          pageBreak(),
+          ...execution,
+        ]
       }]
     });
 
-    const buffer = await Packer.toBuffer(doc);
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    // 使用 toBlob（瀏覽器相容）
+    const blob = await Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const projectName = v('projectName') !== EMPTY ? v('projectName') : '未命名計畫';
+    const projectName = (a['projectName'] && String(a['projectName']).trim()) ? String(a['projectName']) : '未命名計畫';
     link.download = `SBIR_${phaseName}_${projectName}_${new Date().toISOString().slice(0,10)}.docx`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
     btn.textContent = '✅ 已下載！';
@@ -3768,7 +3716,7 @@ async function exportToDocx() {
     }, 2500);
 
   } catch(e) {
-    console.error(e);
+    console.error('DOCX export error:', e);
     alert('輸出失敗：' + e.message);
     btn.textContent = '📄 輸出 SBIR 計畫書 (.docx)';
     btn.disabled = false;
