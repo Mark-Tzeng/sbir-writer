@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-version" content="1.0.3">
+<meta name="app-version" content="2.1.0">
 <title>SBIR 計畫書撰寫助手</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
@@ -70,6 +70,39 @@
     font-size: 0.7rem;
     color: var(--gold-light);
     opacity: 0.8;
+  }
+
+  /* ── 自動存檔狀態列 ── */
+  .save-status {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.45);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: color 0.4s;
+    white-space: nowrap;
+  }
+  .save-status.saved  { color: #7ecfa0; }
+  .save-status.saving { color: var(--gold-light); }
+  .save-status.error  { color: #e07070; }
+
+  /* ── Header 檔案操作按鈕 ── */
+  .header-file-btn {
+    background: none;
+    border: 1px solid rgba(201,168,76,0.35);
+    color: var(--gold-light);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+  .header-file-btn:hover {
+    background: rgba(201,168,76,0.15);
+    border-color: var(--gold);
+    color: var(--gold);
   }
 
   /* ── LAYOUT ── */
@@ -987,6 +1020,9 @@
     <div class="header-logo">SBIR <span>計畫書</span>撰寫助手</div>
   </div>
   <div class="header-right">
+    <div class="save-status" id="saveStatus">⬤ 已同步</div>
+    <button class="header-file-btn" onclick="openFromFile()" title="開啟儲存的計畫書檔案">📂 開啟舊檔</button>
+    <button class="header-file-btn" onclick="saveToFile()" title="儲存目前計畫書為檔案">💾 儲存</button>
     <div class="phase-indicator" id="phaseIndicator">請先選擇申請階段</div>
     <div class="header-badge">AI POWERED</div>
   </div>
@@ -1006,8 +1042,8 @@
       </div>
       <ul class="project-list" id="projectList"></ul>
       <div class="proj-actions">
-        <button class="proj-io-btn" onclick="exportProject()" title="匯出目前專案為 JSON">⬇ 匯出</button>
-        <label class="proj-io-btn" title="從 JSON 匯入專案">⬆ 匯入<input type="file" accept=".json" style="display:none" onchange="importProject(event)"></label>
+        <button class="proj-io-btn" onclick="saveToFile()" title="儲存目前計畫書為 .json 檔案">💾 儲存檔案</button>
+        <button class="proj-io-btn" onclick="openFromFile()" title="開啟已儲存的計畫書 .json 檔案">📂 開啟舊檔</button>
       </div>
     </div>
 
@@ -1276,7 +1312,7 @@ function closeSidebar() {
 // ══════════════════════════════════════════
 // ── VERSION CHECK & AUTO-UPDATE ──
 // ══════════════════════════════════════════
-const CURRENT_VERSION = '1.0.3';
+const CURRENT_VERSION = '2.1.0';
 const VERSION_KEY = 'sbir_app_version';
 
 function checkVersion() {
@@ -1312,6 +1348,132 @@ function showUpdateBanner() {
     </div>
   `;
   document.body.appendChild(banner);
+}
+
+// ══════════════════════════════════════════
+// ── 自動存檔 & 檔案操作 ──
+// ══════════════════════════════════════════
+let _currentFileHandle = null;   // File System Access API handle
+let _autoSaveTimer     = null;   // debounce timer
+
+/** 更新 Header 儲存狀態指示器 */
+function updateSaveStatus(msg, type = 'saved') {
+  const el = document.getElementById('saveStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'save-status ' + type;
+}
+
+/** saveCurrentProjectState 後觸發：更新狀態列 + 若有 fileHandle 則自動回存 */
+function _onProjectSaved() {
+  clearTimeout(_autoSaveTimer);
+  updateSaveStatus('⬤ 儲存中…', 'saving');
+  _autoSaveTimer = setTimeout(async () => {
+    if (_currentFileHandle) {
+      await _writeToHandle(_currentFileHandle);
+    } else {
+      updateSaveStatus('⬤ 已同步', 'saved');
+    }
+  }, 800);
+}
+
+/** 實際寫入 FileSystemFileHandle */
+async function _writeToHandle(handle) {
+  try {
+    const id = getActiveProjectId();
+    if (!id) return;
+    const projects = loadProjects();
+    const project  = projects.find(p => p.id === id);
+    if (!project) return;
+    const json     = JSON.stringify(project, null, 2);
+    const writable = await handle.createWritable();
+    await writable.write(json);
+    await writable.close();
+    const t = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    updateSaveStatus(`⬤ 已儲存 ${t}`, 'saved');
+  } catch (e) {
+    if (e.name !== 'AbortError') updateSaveStatus('⬤ 儲存失敗', 'error');
+  }
+}
+
+/** 💾 儲存 — 有 fileHandle 時直接覆寫，否則彈出另存新檔對話框 */
+async function saveToFile() {
+  saveCurrentProjectState();
+  const id = getActiveProjectId();
+  if (!id) { alert('請先選擇或建立一個專案。'); return; }
+  const projects = loadProjects();
+  const project  = projects.find(p => p.id === id);
+  if (!project) return;
+  const json = JSON.stringify(project, null, 2);
+
+  if (window.showSaveFilePicker) {
+    try {
+      if (!_currentFileHandle) {
+        _currentFileHandle = await window.showSaveFilePicker({
+          suggestedName: `SBIR_${project.name}_${new Date().toISOString().slice(0,10)}.json`,
+          types: [{ description: 'SBIR 計畫書 (JSON)', accept: { 'application/json': ['.json'] } }]
+        });
+      }
+      await _writeToHandle(_currentFileHandle);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      // 降級為下載
+      _downloadJson(project, json);
+    }
+  } else {
+    _downloadJson(project, json);
+  }
+}
+
+/** 另存新檔（強制彈出對話框） */
+async function saveAsToFile() {
+  _currentFileHandle = null;
+  await saveToFile();
+}
+
+/** 📂 開啟舊檔 */
+async function openFromFile() {
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'SBIR 計畫書 (JSON)', accept: { 'application/json': ['.json'] } }]
+      });
+      const file = await handle.getFile();
+      const text = await file.text();
+      const project = JSON.parse(text);
+      if (!project.id || !project.name) throw new Error('格式不符');
+      // 避免 ID 衝突
+      project.id = generateProjectId();
+      project.name = project.name.replace(/（匯入\d*）$/, '') + '（匯入）';
+      project.updatedAt = new Date().toISOString();
+      const projects = loadProjects();
+      projects.unshift(project);
+      saveProjects(projects);
+      switchProject(project.id);
+      _currentFileHandle = null; // 開啟的檔案不直接覆寫，需另存
+      updateSaveStatus(`⬤ 已開啟：${file.name}`, 'saved');
+    } catch (e) {
+      if (e.name !== 'AbortError') alert('開啟失敗，請確認為本工具儲存的 .json 檔案。');
+    }
+  } else {
+    // 降級：觸發隱藏 file input
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.json';
+    input.onchange = importProject;
+    input.click();
+  }
+}
+
+/** 下載 JSON（降級用） */
+function _downloadJson(project, json) {
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `SBIR_${project.name}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  updateSaveStatus('⬤ 已下載', 'saved');
 }
 
 // ── PROJECT MANAGEMENT ──
@@ -1413,6 +1575,7 @@ function saveCurrentProjectState() {
     projects[idx].phaseLabel = phaseLabels[state.phase];
   }
   saveProjects(projects);
+  _onProjectSaved();
 }
 
 function deleteProject(id, event) {
@@ -3515,13 +3678,13 @@ function copyText(id) {
 // ══════════════════════════════════════════
 // ── DOCX EXPORT ──
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// ── DOCX 輸出（官方格式 Phase 1 / Phase 2 / Phase 2+）──
+// ══════════════════════════════════════════════════════════════
 async function exportToDocx() {
   const btn = document.getElementById('exportDocBtn');
-  btn.textContent = '⏳ 產生中...';
-  btn.disabled = true;
-
+  btn.textContent = '⏳ 產生中...'; btn.disabled = true;
   try {
-    // 動態載入 docx.js（多重 CDN 備援）
     if (!window.docx) {
       const cdnList = [
         'https://unpkg.com/docx@8.5.0/build/index.umd.js',
@@ -3531,203 +3694,573 @@ async function exportToDocx() {
       let loaded = false;
       for (const src of cdnList) {
         try {
-          await new Promise((resolve, reject) => {
+          await new Promise((res, rej) => {
             const s = document.createElement('script');
-            s.src = src;
-            s.onload = resolve;
-            s.onerror = reject;
+            s.src = src; s.onload = res; s.onerror = rej;
             document.head.appendChild(s);
           });
           if (window.docx) { loaded = true; break; }
-        } catch(e) { /* 嘗試下一個 */ }
+        } catch(e) {}
       }
       if (!loaded) throw new Error('無法載入 docx.js，請重新整理頁面後再試');
     }
 
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel,
-            AlignmentType, BorderStyle } = window.docx;
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+            HeadingLevel, AlignmentType, BorderStyle, WidthType, ShadingType,
+            VerticalAlign, PageNumber, Header, Footer, PageBreak } = window.docx;
 
-    const a = state.answers;
-    const phase = state.phase;
-    const phaseName = {1:'先期研究(Phase 1)', 2:'研究開發(Phase 2)', 3:'加值應用(Phase 2+)'}[phase];
+    const a    = state.answers;
+    const ph   = state.phase;
     const EMPTY = '[待填寫]';
-    // 單 key 取值
-    const v = (key) => (a[key] && String(a[key]).trim()) ? String(a[key]) : EMPTY;
-    // 多 key 備援：取第一個有值的
-    const vv = (...keys) => { for (const k of keys) { if (a[k] && String(a[k]).trim()) return String(a[k]); } return EMPTY; };
+    const v    = k => (a[k] && String(a[k]).trim()) ? String(a[k]) : EMPTY;
+    const vv   = (...ks) => { for(const k of ks){ if(a[k]&&String(a[k]).trim()) return String(a[k]); } return EMPTY; };
+    const planName = vv('plan_name','p2_name');
+    const phaseName = {1:'先期研究（Phase 1）',2:'研究開發（Phase 2）',3:'加值應用（Phase 2+）'}[ph];
 
-    const T = (text, opts={}) => new TextRun({ text: String(text || ''), font: '標楷體', ...opts });
-    const para = (text, opts={}) => new Paragraph({ children: [T(text)], spacing: { after: 160 }, ...opts });
-    const h1 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: [T(text, { bold: true, size: 32 })], spacing: { before: 400, after: 200 } });
-    const h2 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [T(text, { bold: true, size: 28 })], spacing: { before: 280, after: 140 } });
-    const field = (label, value) => new Paragraph({
-      children: [ T(label + '：', { bold: true }), T(value, value !== EMPTY ? {} : { color: 'CC0000' }) ],
-      spacing: { after: 120 }
+    // ── 通用 helpers ──
+    const KAI = '標楷體';
+    const T  = (text,opts={}) => new TextRun({text:String(text||''), font:KAI, ...opts});
+    const P  = (children=[], opts={}) => new Paragraph({
+      children: Array.isArray(children) ? children : [T(children)],
+      spacing:{after:120}, ...opts });
+    const blank = () => new Paragraph({text:'', spacing:{after:80}});
+    const PB    = () => new Paragraph({children:[new PageBreak()], spacing:{after:0}});
+
+    const H1 = text => new Paragraph({
+      children:[T(text,{bold:true,size:30})],
+      spacing:{before:400,after:200},
+      border:{bottom:{style:BorderStyle.SINGLE,size:6,color:'1F3864',space:4}}
     });
-    const blank = () => new Paragraph({ text: '', spacing: { after: 160 } });
-    const pageBreak = () => new Paragraph({ pageBreakBefore: true, text: '' });
+    const H2 = text => new Paragraph({
+      children:[T(text,{bold:true,size:26})], spacing:{before:280,after:120}
+    });
+    const H3 = text => new Paragraph({
+      children:[T(text,{bold:true,size:24,color:'1F3864'})], spacing:{before:180,after:80}
+    });
+
+    const field = (label, val) => new Paragraph({
+      children:[T(label+'：',{bold:true}), T(val!==EMPTY?val:EMPTY, val===EMPTY?{color:'CC0000'}:{})],
+      spacing:{after:80}, indent:{left:200}
+    });
+    const note = text => new Paragraph({
+      children:[T('※ '+text,{size:18,color:'595959'})], spacing:{after:60}, indent:{left:200}
+    });
+
+    // ── 表格 helpers ──
+    const BDR = {style:BorderStyle.SINGLE,size:4,color:'AAAAAA'};
+    const BDRH = {style:BorderStyle.SINGLE,size:6,color:'1F3864'};
+    const allBdr = {top:BDR,bottom:BDR,left:BDR,right:BDR,insideHorizontal:BDR,insideVertical:BDR};
+    const shd = (fill) => ({fill,type:ShadingType.CLEAR,color:'auto'});
+
+    const cell = (text, {bold=false,align='center',bg=null,size=20,span=1,color=null}={}) => {
+      const tc = new TableCell({
+        children:[new Paragraph({
+          children:[T(text,{bold,size,color:color||undefined})],
+          alignment: align==='center'?AlignmentType.CENTER:align==='right'?AlignmentType.RIGHT:AlignmentType.LEFT,
+          spacing:{after:40}
+        })],
+        borders:{top:BDR,bottom:BDR,left:BDR,right:BDR},
+        shading: bg?shd(bg):undefined,
+        margins:{top:60,bottom:60,left:120,right:120},
+        verticalAlign: VerticalAlign.CENTER,
+        columnSpan: span||1
+      });
+      return tc;
+    };
+    const hCell = (text,w) => new TableCell({
+      children:[new Paragraph({children:[T(text,{bold:true,size:20})],alignment:AlignmentType.CENTER,spacing:{after:40}})],
+      borders:{top:BDRH,bottom:BDRH,left:BDR,right:BDR},
+      shading:shd('D9E2F3'), margins:{top:60,bottom:60,left:120,right:120},
+      verticalAlign:VerticalAlign.CENTER,
+      width:{size:w,type:WidthType.DXA}
+    });
+    const mkTable = (colWidths,rows) => new Table({
+      width:{size:colWidths.reduce((a,b)=>a+b,0),type:WidthType.DXA},
+      columnWidths:colWidths,
+      rows:rows.map(r=>new TableRow({children:r})),
+      borders:allBdr
+    });
 
     // ── 封面 ──
     const cover = [
-      para('小型企業創新研發計畫', { alignment: AlignmentType.CENTER, spacing: { before: 800, after: 200 } }),
-      new Paragraph({ children: [T(phaseName, { bold: true, size: 36 })], alignment: AlignmentType.CENTER, spacing: { after: 400 } }),
-      new Paragraph({ children: [T(vv('plan_name','p2_name'), { bold: true, size: 28 })], alignment: AlignmentType.CENTER, spacing: { after: 600 } }),
-      field('公司名稱', v('company_name')),
-      field('計畫期間', vv('period','p2_period')),
-      blank(),
-      para('計畫主辦單位：經濟部中小及新創企業署', { alignment: AlignmentType.CENTER }),
-      para('中 華 民 國　　　年　　月', { alignment: AlignmentType.CENTER }),
+      new Paragraph({children:[T('小型企業創新研發計畫',{bold:true,size:40})],alignment:AlignmentType.CENTER,spacing:{before:1200,after:300}}),
+      new Paragraph({children:[T(phaseName,{bold:true,size:36})],alignment:AlignmentType.CENTER,spacing:{after:600}}),
+      new Paragraph({children:[T(planName,{bold:true,size:30})],alignment:AlignmentType.CENTER,spacing:{after:800}}),
+      ...([
+        ['申　請　公　司', v('company_name')],
+        ['計畫主持人',    v('pi_name')],
+        ['執　行　期　間', vv('period','p2_period')],
+        ['主　辦　單　位', '經濟部中小及新創企業署'],
+      ].map(([lb,val])=>new Paragraph({
+        children:[T(lb+'：',{bold:true,size:26}),T(val,{size:26})],
+        alignment:AlignmentType.CENTER,spacing:{after:180}
+      }))),
+      new Paragraph({children:[T('中 華 民 國　　　年　　月',{size:24})],alignment:AlignmentType.CENTER,spacing:{before:600}}),
+      PB(),
     ];
 
-    // ── 公司基本資料 ──
-    const company = [
-      h1('申請公司基本資料'),
-      field('公司名稱', v('company_name')),
-      field('創立日期', v('founded')),
-      field('實收資本額', v('capital')),
-      field('主要業務', v('business')),
+    // ── 壹、申請公司基本資料（三個 Phase 共用）──
+    const secCompany = [
+      H1('壹、申請公司基本資料'),
+      H2('一、基本資料'),
+      mkTable([2800,4000,2800,4000],[
+        [hCell('項目',2800),hCell('內容',4000),hCell('項目',2800),hCell('內容',4000)],
+        [cell('公司名稱',{bold:true,bg:'EEF2FA'}),cell(v('company_name'),{align:'left',span:3})],
+        [cell('主要業務',{bold:true,bg:'EEF2FA'}),cell(v('business'),{align:'left'}),
+         cell('成立日期',{bold:true,bg:'EEF2FA'}),cell(v('founded'),{align:'left'})],
+        [cell('實收資本額',{bold:true,bg:'EEF2FA'}),cell(v('capital'),{align:'left'}),
+         cell('統一編號',{bold:true,bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'})],
+        [cell('員工人數',{bold:true,bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'}),
+         cell('公司地址',{bold:true,bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'})],
+      ]),
       blank(),
-      h2('公司優勢與核心技術'),
-      para(v('strengths')),
+      note('統一編號、員工人數、公司地址請自行填入'),
       blank(),
-      h2('主要產品與服務'),
-      para(v('products')),
+      H2('二、股東結構'),
+      mkTable([4400,2200,2000,5000],[
+        [hCell('股東姓名／名稱',4400),hCell('持股數（股）',2200),hCell('持股比例（%）',2000),hCell('備註',5000)],
+        [cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY),cell(EMPTY),cell(EMPTY,{align:'left'})],
+        [cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY),cell(EMPTY),cell(EMPTY,{align:'left'})],
+        [cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY),cell(EMPTY),cell(EMPTY,{align:'left'})],
+      ]),
+      note('請依實際股東結構填寫，若有外資股東請另行標註'),
       blank(),
-      h2('研發成果與獎項'),
-      para(v('rnd_results')),
+      H2('三、近三年度財務摘要（單位：千元）'),
+      mkTable([3200,2200,2200,2200,3800],[
+        [hCell('財務項目',3200),hCell('111年度',2200),hCell('112年度',2200),hCell('113年度',2200),hCell('備註',3800)],
+        ...[['營業收入'],['營業利益'],['稅後淨利'],['研發費用'],['研發費用／營收（%）']].map(([item])=>
+          [cell(item,{bold:true,bg:'EEF2FA'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'})]
+        )
+      ]),
+      note('請依各年度財務報表填寫'),
+      blank(),
+      H2('四、公司研發成果摘要及重要獲獎（最近3年）'),
+      P(v('rnd_results')!==EMPTY ? v('rnd_results') : '請說明近三年公司研發成果、取得專利、技術移轉、獲獎記錄等',
+        {indent:{left:200}, children:[T(v('rnd_results')!==EMPTY?v('rnd_results'):'請說明近三年公司研發成果、取得專利、技術移轉、獲獎記錄等',
+          v('rnd_results')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H2('五、近三年承接政府研究計畫概況'),
+      mkTable([4200,2400,2400,2200,2400],[
+        [hCell('計畫名稱',4200),hCell('主辦機關',2400),hCell('計畫期間',2400),hCell('補助金額（千元）',2200),hCell('執行狀況',2400)],
+        [cell('（如無承接紀錄請填「無」）',{align:'left',span:5,color:'595959'})],
+      ]),
+      blank(), PB(),
     ];
 
-    // ── 計畫摘要 ──
-    const summary = [
-      h1('計畫摘要'),
-      field('計畫名稱', vv('plan_name','p2_name')),
-      field('計畫主持人', v('pi_name')),
-      field('計畫期間', vv('period','p2_period')),
+    // ══════════════════════════
+    // Phase 1 專屬內容
+    // ══════════════════════════
+    const buildPhase1 = () => {
+      const motivationText = vv('motivation','problem');
+      return [
+        H1('貳、計畫構想書'),
+        H2('一、研究動機及先期評估分析'),
+        H3('（一）產業現況與研發動機'),
+        P(motivationText, {indent:{left:200},children:[T(motivationText,motivationText===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+        H3('（二）現有方案缺口與技術調查'),
+        P(v('current_gap'), {indent:{left:200},children:[T(v('current_gap'),v('current_gap')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+        H3('（三）市場需求評估'),
+        P(v('market_size'), {indent:{left:200},children:[T(v('market_size'),v('market_size')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+
+        H2('二、創新性說明'),
+        P(vv('innov_key','solution'), {indent:{left:200},
+          children:[T(vv('innov_key','solution'),vv('innov_key','solution')===EMPTY?{color:'CC0000'}:{})]}),
+        ...(v('innov1_title')!==EMPTY?[
+          blank(),
+          new Paragraph({children:[T('【創新點一：'+v('innov1_title')+'】',{bold:true})],spacing:{after:80},indent:{left:200}}),
+          P(v('innov1'),{indent:{left:400},children:[T(v('innov1'),v('innov1')===EMPTY?{color:'CC0000'}:{})]})
+        ]:[]),
+        ...(v('innov2_title')!==EMPTY?[
+          blank(),
+          new Paragraph({children:[T('【創新點二：'+v('innov2_title')+'】',{bold:true})],spacing:{after:80},indent:{left:200}}),
+          P(v('innov2'),{indent:{left:400},children:[T(v('innov2'),v('innov2')===EMPTY?{color:'CC0000'}:{})]})
+        ]:[]),
+        blank(),
+        H3('與現有方案比較'),
+        P(v('compare'),{indent:{left:200},children:[T(v('compare'),v('compare')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+
+        H2('三、可行性規劃說明'),
+        H3('（一）技術可行性'),
+        P(v('feasibility'),{indent:{left:200},children:[T(v('feasibility'),v('feasibility')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+        H3('（二）Phase 1 驗證計畫'),
+        P(v('validation'),{indent:{left:200},children:[T(v('validation'),v('validation')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+        H3('（三）風險評估與因應策略'),
+        P(v('risks'),{indent:{left:200},children:[T(v('risks'),v('risks')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+
+        H2('四、預期完成工作項目'),
+        P(vv('expected_benefits','objectives'),{indent:{left:200},
+          children:[T(vv('expected_benefits','objectives'),vv('expected_benefits','objectives')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+
+        H2('五、預期研究效益'),
+        H3('（一）技術效益'),
+        P(v('quantify')!==EMPTY?v('quantify'):'請說明量化技術效益（如：準確率提升X%，速度提升X倍等）',
+          {indent:{left:200},children:[T(v('quantify')!==EMPTY?v('quantify'):'請說明量化技術效益',v('quantify')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(),
+        H3('（二）商業與產業效益'),
+        P(v('bizmodel')!==EMPTY?v('bizmodel'):vv('commercialize','target'),
+          {indent:{left:200},children:[T(v('bizmodel')!==EMPTY?v('bizmodel'):vv('commercialize','target'),
+            vv('bizmodel','commercialize','target')===EMPTY?{color:'CC0000'}:{})]}),
+        blank(), PB(),
+
+        H1('參、計畫主持人學經歷及參與本計畫之工作說明'),
+        mkTable([3000,10600],[
+          [hCell('項目',3000),hCell('內容',10600)],
+          ...[
+            ['姓名', v('pi_name')],
+            ['最高學歷', EMPTY],
+            ['現職', EMPTY],
+            ['主要經歷', vv('pi_bg','pi_detail')],
+            ['重要成就（專利／論文／獲獎）', EMPTY],
+            ['投入本計畫時間比例', EMPTY],
+            ['參與本計畫工作說明', v('pi_detail')!==EMPTY?v('pi_detail'):EMPTY],
+          ].map(([lb,val])=>[
+            cell(lb,{bold:true,bg:'EEF2FA',align:'center'}),
+            cell(val,{align:'left',color:val===EMPTY?'CC0000':undefined})
+          ])
+        ]),
+        note('最高學歷、現職、時間比例、重要成就請自行補充'),
+        blank(), PB(),
+
+        H1('肆、預定進度與查核點'),
+        H2('一、預定計畫進度（甘特圖）'),
+        mkTable([5000,1700,1700,1700,1700,1800],[
+          [hCell('工作項目',5000),hCell('第1月',1700),hCell('第2月',1700),hCell('第3月',1700),hCell('第4月',1700),hCell('第5-6月',1800)],
+          [cell('（請依計畫實際工作項目填寫）',{align:'left',span:6,color:'595959'})],
+        ]),
+        blank(),
+        H2('二、查核點說明'),
+        P(v('milestones'),{indent:{left:200},children:[T(v('milestones'),v('milestones')===EMPTY?{color:'CC0000'}:{})]}),
+        note('查核點格式：「MX（第X個月末）：完成○○，達成指標：○○，附件：○○報告」'),
+        blank(), PB(),
+
+        H1('伍、研究經費需求'),
+        field('計畫總經費', v('total_budget')!==EMPTY?v('total_budget')+' 千元':EMPTY),
+        field('申請補助款（≦總經費50%）', v('budget_subsidy')!==EMPTY?v('budget_subsidy')+' 千元':EMPTY),
+        blank(),
+        mkTable([3600,5200,1900,1900,1000],[
+          [hCell('科目',3600),hCell('計算說明',5200),hCell('總經費（千元）',1900),hCell('自籌款（千元）',1900),hCell('補助款（千元）',1000)],
+          ...[
+            ['人事費（≦總經費60%）', vv('budget_personnel','personnel')],
+            ['消耗性器材及原材料費', vv('budget_materials','materials')],
+            ['設備使用及租賃費', v('budget_equipment')],
+            ['國內外差旅費', EMPTY],
+            ['委託研究費（≦總經費30%）', EMPTY],
+            ['其他費用', v('other_cost')],
+          ].map(([lb,val])=>[
+            cell(lb,{bold:true,bg:'EEF2FA',align:'left'}),
+            cell(EMPTY,{align:'left',color:'CC0000'}),
+            cell(val!==EMPTY?val:EMPTY,{color:val===EMPTY?'CC0000':undefined}),
+            cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'})
+          ]),
+          [cell('合　計',{bold:true,bg:'FFF2CC'}),cell('',{bg:'FFF2CC'}),
+           cell(v('total_budget')!==EMPTY?v('total_budget'):EMPTY,{bold:true,bg:'FFF2CC',color:v('total_budget')===EMPTY?'CC0000':undefined}),
+           cell(EMPTY,{bold:true,bg:'FFF2CC',color:'CC0000'}),
+           cell(v('budget_subsidy')!==EMPTY?v('budget_subsidy'):EMPTY,{bold:true,bg:'FFF2CC',color:v('budget_subsidy')===EMPTY?'CC0000':undefined})],
+        ]),
+        note('人事費不得超過總經費60%；委託研究費不得超過總經費30%；補助款不得超過總經費50%'),
+      ];
+    };
+
+    // ══════════════════════════
+    // Phase 2 專屬內容
+    // ══════════════════════════
+    const buildPhase2 = () => [
+      // 計畫摘要表
+      H1('計畫摘要表'),
+      mkTable([3000,10600],[
+        [hCell('項目',3000),hCell('內容',10600)],
+        [cell('計畫名稱',{bold:true,bg:'EEF2FA'}),cell(v('p2_name'),{align:'left',color:v('p2_name')===EMPTY?'CC0000':undefined})],
+        [cell('執行期間',{bold:true,bg:'EEF2FA'}),cell(v('p2_period'),{align:'left',color:v('p2_period')===EMPTY?'CC0000':undefined})],
+        [cell('計畫主持人',{bold:true,bg:'EEF2FA'}),cell(v('pi_name'),{align:'left',color:v('pi_name')===EMPTY?'CC0000':undefined})],
+        [cell('計畫摘要',{bold:true,bg:'EEF2FA'}),cell(v('summary'),{align:'left',color:v('summary')===EMPTY?'CC0000':undefined})],
+        [cell('創新重點',{bold:true,bg:'EEF2FA'}),cell(vv('innov_key','innovation_desc'),{align:'left',color:vv('innov_key','innovation_desc')===EMPTY?'CC0000':undefined})],
+        [cell('執行優勢',{bold:true,bg:'EEF2FA'}),cell(v('exec_adv'),{align:'left',color:v('exec_adv')===EMPTY?'CC0000':undefined})],
+        [cell('預期量化效益',{bold:true,bg:'EEF2FA'}),cell(v('quantify'),{align:'left',color:v('quantify')===EMPTY?'CC0000':undefined})],
+      ]),
+      blank(), PB(),
+
+      // 貳
+      H1('貳、計畫內容'),
+      H2('一、研發動機及競爭力分析'),
+      H3('（一）國內外產業環境現況與需求'),
+      P(v('motivation'),{indent:{left:200},children:[T(v('motivation'),v('motivation')===EMPTY?{color:'CC0000'}:{})]}),
       blank(),
-      h2('摘要說明'),
-      para(v('summary')),
+      H3('（二）競爭力比較表'),
+      mkTable([3600,2000,2000,2000,4000],[
+        [hCell('比較項目',3600),hCell('傳統方案',2000),hCell('主要競品',2000),hCell('本計畫',2000),hCell('優勢說明',4000)],
+        [cell('（請填入各項比較）',{span:5,align:'left',color:'595959'})],
+      ]),
       blank(),
-      h2('創新重點'),
-      para(vv('innov_key','innovation_desc','solution')),
+      P(v('competitive'),{indent:{left:200},children:[T(v('competitive'),v('competitive')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（三）可行性分析'),
+      P(vv('viability','feasibility'),{indent:{left:200},
+        children:[T(vv('viability','feasibility'),vv('viability','feasibility')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+
+      H2('二、計畫目標與規格'),
+      H3('（一）計畫目標'),
+      P(v('objectives'),{indent:{left:200},children:[T(v('objectives'),v('objectives')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（二）創新性說明'),
+      P(v('innovation_desc'),{indent:{left:200},children:[T(v('innovation_desc'),v('innovation_desc')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（三）計畫成果功能規格／技術指標'),
+      mkTable([3600,2400,2400,2400,2800],[
+        [hCell('規格項目',3600),hCell('現有水準',2400),hCell('本計畫目標',2400),hCell('國際水準',2400),hCell('備註',2800)],
+        [cell('（請填入量化技術規格）',{span:5,align:'left',color:'595959'})],
+      ]),
+      blank(),
+      P(v('specs'),{indent:{left:200},children:[T(v('specs'),v('specs')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+
+      H2('三、實施方式'),
+      H3('（一）計畫執行步驟與研發方法'),
+      P(v('method'),{indent:{left:200},children:[T(v('method'),v('method')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（二）技術及智財來源'),
+      P(v('ip_source'),{indent:{left:200},children:[T(v('ip_source'),v('ip_source')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+
+      H2('四、預期效益'),
+      H3('（一）量化效益'),
+      P(v('quantify'),{indent:{left:200},children:[T(v('quantify'),v('quantify')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（二）質化效益'),
+      P(v('benefits_detail'),{indent:{left:200},children:[T(v('benefits_detail'),v('benefits_detail')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(), PB(),
+      ...buildP2Tail()
     ];
 
-    // ── 計畫內容 ──
-    const innov1Block = (v('innov1_title') !== EMPTY) ? [
-      new Paragraph({ children: [T('創新點一：' + v('innov1_title'), { bold: true })], spacing: { after: 80 } }),
-      para(v('innov1')), blank(),
-    ] : [];
-    const innov2Block = (v('innov2_title') !== EMPTY) ? [
-      new Paragraph({ children: [T('創新點二：' + v('innov2_title'), { bold: true })], spacing: { after: 80 } }),
-      para(v('innov2')), blank(),
-    ] : [];
+    // ══════════════════════════
+    // Phase 2 / Phase 2+ 共用尾段（參～陸）
+    // ══════════════════════════
+    const buildP2Tail = () => [
+      // 參
+      H1('參、智財分析'),
+      mkTable([5000,8600],[
+        [hCell('分析項目',5000),hCell('說明',8600)],
+        [cell('一、是否涉及他人智財？若有，如何解決？',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('ip_analysis')!==EMPTY?v('ip_analysis'):EMPTY,{align:'left',color:v('ip_analysis')===EMPTY?'CC0000':undefined})],
+        [cell('二、是否已掌握關鍵智財？（自有或已授權）',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('ip_strategy')!==EMPTY?v('ip_strategy'):EMPTY,{align:'left',color:v('ip_strategy')===EMPTY?'CC0000':undefined})],
+        [cell('三、關鍵技術是否委外或引進？公司是否具承接能力？',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('ip_source')!==EMPTY?v('ip_source'):EMPTY,{align:'left',color:v('ip_source')===EMPTY?'CC0000':undefined})],
+        [cell('四、計畫期間預計申請哪些智財？',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(EMPTY,{align:'left',color:'CC0000'})],
+      ]),
+      blank(), PB(),
 
-    const content = [
-      h1('計畫內容'),
-      h2('一、問題陳述'),
-      para(v('problem')),
+      // 肆
+      H1('肆、預定進度及查核點'),
+      H2('一、預定計畫進度（甘特圖）'),
+      mkTable([5000,1300,1300,1300,1300,1300,1300,1300,1300,1300],[
+        [hCell('分項計畫/工作項目',5000),...[1,2,3,4,5,6,7,8,9].map(i=>hCell(`M${i}`,1300))],
+        [cell('（請依計畫填入工作項目與執行月份）',{span:10,align:'left',color:'595959'})],
+      ]),
       blank(),
-      h2('二、現有方案缺口'),
-      para(v('current_gap')),
+      H2('二、查核點說明'),
+      mkTable([2400,5000,6200],[
+        [hCell('查核點',2400),hCell('預定完成時程',5000),hCell('查核內容（含量化指標及附件）',6200)],
+        [cell('M3',{bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'})],
+        [cell('M6',{bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'})],
+        [cell('M9',{bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'})],
+        [cell('M12',{bg:'EEF2FA'}),cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'})],
+      ]),
       blank(),
-      h2('三、創新解決方案'),
-      para(v('solution')),
+      P(v('milestones'),{indent:{left:200},children:[T(v('milestones'),v('milestones')===EMPTY?{color:'CC0000'}:{})]}),
+      note('查核點格式：「完成○○（量化指標：○○），附件：○○測試報告、客戶確認書」'),
+      blank(), PB(),
+
+      // 伍
+      H1('伍、計畫人力投入說明'),
+      H2('一、計畫主持人學經歷'),
+      mkTable([3000,10600],[
+        [hCell('項目',3000),hCell('內容',10600)],
+        ...[
+          ['姓名', v('pi_name')],['學歷（最高）',EMPTY],['現職',EMPTY],
+          ['主要經歷', vv('pi_bg','pi_detail')],
+          ['曾參與計畫',EMPTY],['投入本計畫時間比例',EMPTY],
+          ['本計畫工作說明', v('pi_detail')!==EMPTY?v('pi_detail'):EMPTY],
+        ].map(([lb,val])=>[
+          cell(lb,{bold:true,bg:'EEF2FA',align:'center'}),
+          cell(val,{align:'left',color:val===EMPTY?'CC0000':undefined})
+        ])
+      ]),
       blank(),
-      h2('四、創新性論述'),
-      ...innov1Block,
-      ...innov2Block,
-      h2('五、競爭優勢與技術壁壘'),
-      para(vv('barrier','compare')),
+      H2('二、研發人員簡歷表'),
+      mkTable([1200,2400,2400,1800,2200,2000,1600],[
+        [hCell('#',1200),hCell('姓名',2400),hCell('職稱',2400),hCell('最高學歷',1800),hCell('主要經歷',2200),hCell('投入比例',2000),hCell('參與分項',1600)],
+        [cell('1'),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'})],
+        [cell('2'),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{align:'left',color:'CC0000'}),cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'})],
+      ]),
       blank(),
-      h2('六、技術可行性'),
-      para(v('feasibility')),
+      P(v('rnd_team'),{indent:{left:200},children:[T(v('rnd_team'),v('rnd_team')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(), PB(),
+
+      // 陸
+      H1('陸、經費需求總表（單位：千元）'),
+      field('計畫總經費', v('total_budget')!==EMPTY?v('total_budget')+' 千元':EMPTY),
+      field('申請補助款（≦總經費50%）', v('budget_subsidy')!==EMPTY?v('budget_subsidy')+' 千元':EMPTY),
       blank(),
-      h2('七、研發方法'),
-      para(v('method')),
+      mkTable([3600,4200,1900,1900,2000],[
+        [hCell('科目',3600),hCell('計算說明',4200),hCell('總經費',1900),hCell('自籌款',1900),hCell('申請補助款',2000)],
+        ...[
+          ['人事費（≦60%）', vv('budget_personnel','personnel')],
+          ['消耗性器材及原材料費', vv('budget_materials','materials')],
+          ['設備使用及租賃費', v('budget_equipment')],
+          ['國內外差旅費', EMPTY],
+          ['委託研究費（≦30%）', EMPTY],
+          ['技術移轉費（≦10%）', EMPTY],
+          ['其他費用', v('other_cost')],
+        ].map(([lb,val])=>[
+          cell(lb,{bold:true,bg:'EEF2FA',align:'left'}),
+          cell(EMPTY,{align:'left',color:'CC0000'}),
+          cell(val!==EMPTY?val:EMPTY,{color:val===EMPTY?'CC0000':undefined}),
+          cell(EMPTY,{color:'CC0000'}),cell(EMPTY,{color:'CC0000'})
+        ]),
+        [cell('合　計',{bold:true,bg:'FFF2CC'}),cell('',{bg:'FFF2CC'}),
+         cell(v('total_budget')!==EMPTY?v('total_budget'):EMPTY,{bold:true,bg:'FFF2CC',color:v('total_budget')===EMPTY?'CC0000':undefined}),
+         cell(EMPTY,{bold:true,bg:'FFF2CC',color:'CC0000'}),
+         cell(v('budget_subsidy')!==EMPTY?v('budget_subsidy'):EMPTY,{bold:true,bg:'FFF2CC',color:v('budget_subsidy')===EMPTY?'CC0000':undefined})],
+      ]),
+      note('人事費≦總經費60%；委託研究費≦30%；技術移轉費≦10%；補助款≦50%'),
+    ];
+
+    // ══════════════════════════
+    // Phase 2+ 專屬內容
+    // ══════════════════════════
+    const buildPhase2Plus = () => [
+      // Phase 2 成果說明
+      H1('壹之二、Phase 2 研發成果說明'),
+      mkTable([3000,10600],[
+        [hCell('項目',3000),hCell('內容',10600)],
+        [cell('原 Phase 2 計畫名稱',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('p2_name'),{align:'left',color:v('p2_name')===EMPTY?'CC0000':undefined})],
+        [cell('Phase 2 執行期間',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('p2_period'),{align:'left',color:v('p2_period')===EMPTY?'CC0000':undefined})],
+        [cell('Phase 2 具體研發成果',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('p2_results'),{align:'left',color:v('p2_results')===EMPTY?'CC0000':undefined})],
+        [cell('加值應用說明（在既有成果上新增哪些功能/擴展哪些市場）',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('valueadd'),{align:'left',color:v('valueadd')===EMPTY?'CC0000':undefined})],
+        [cell('加值後預期達到的新效益',{bold:true,bg:'EEF2FA',align:'left'}),
+         cell(v('expected_benefits'),{align:'left',color:v('expected_benefits')===EMPTY?'CC0000':undefined})],
+      ]),
+      blank(), PB(),
+
+      // 貳（同 P2 但加入市場拓展）
+      H1('貳、計畫內容'),
+      H2('一、研發動機及競爭力分析'),
+      P(v('motivation'),{indent:{left:200},children:[T(v('motivation'),v('motivation')===EMPTY?{color:'CC0000'}:{})]}),
       blank(),
-      h2('八、預期目標'),
-      para(vv('objectives','expected_benefits')),
+      H2('二、加值應用目標與規格'),
+      H3('（一）加值應用目標'),
+      P(v('objectives'),{indent:{left:200},children:[T(v('objectives'),v('objectives')===EMPTY?{color:'CC0000'}:{})]}),
       blank(),
-      h2('九、市場分析'),
+      H3('（二）創新性說明'),
+      P(v('innovation_desc'),{indent:{left:200},children:[T(v('innovation_desc'),v('innovation_desc')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（三）技術規格指標'),
+      P(v('specs'),{indent:{left:200},children:[T(v('specs'),v('specs')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H2('三、市場拓展計畫'),
+      H3('（一）目標市場分析'),
       field('目標市場規模', v('market_size')),
-      para(vv('target','competitive')),
+      P(v('target'),{indent:{left:200},children:[T(v('target'),v('target')===EMPTY?{color:'CC0000'}:{})]}),
       blank(),
-      h2('十、商業化計畫'),
-      para(vv('commercialize','bizmodel')),
+      H3('（二）市場拓展策略'),
+      P(v('market_expand'),{indent:{left:200},children:[T(v('market_expand'),v('market_expand')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（三）商業化計畫'),
+      P(vv('commercialize','bizmodel'),{indent:{left:200},
+        children:[T(vv('commercialize','bizmodel'),vv('commercialize','bizmodel')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H2('四、實施方式'),
+      P(v('method'),{indent:{left:200},children:[T(v('method'),v('method')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H2('五、預期效益'),
+      H3('（一）量化效益'),
+      P(v('quantify'),{indent:{left:200},children:[T(v('quantify'),v('quantify')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(),
+      H3('（二）質化效益'),
+      P(v('benefits_detail'),{indent:{left:200},children:[T(v('benefits_detail'),v('benefits_detail')===EMPTY?{color:'CC0000'}:{})]}),
+      blank(), PB(),
+
+      blank(), PB(),
+      // 參～陸 與 Phase 2 相同
+      ...buildP2Tail()
     ];
 
-    // ── 智財分析 ──
-    const ip = [
-      h1('智財分析'),
-      h2('一、智財來源'),
-      para(v('ip_source')),
-      blank(),
-      h2('二、智財佈局策略'),
-      para(v('ip_strategy')),
-      blank(),
-      h2('三、智財分析'),
-      para(v('ip_analysis')),
-    ];
-
-    // ── 執行計畫與經費 ──
-    const execution = [
-      h1('計畫執行與經費'),
-      h2('一、執行時程與查核點'),
-      para(v('milestones')),
-      blank(),
-      h2('二、計畫主持人'),
-      field('姓名', v('pi_name')),
-      para(vv('pi_detail','pi_bg')),
-      blank(),
-      h2('三、研發團隊'),
-      para(vv('team_members','rnd_team')),
-      blank(),
-      h2('四、經費規劃'),
-      field('計畫總經費', vv('total_budget','budget_total') + ' 千元'),
-      field('補助款（≦50%）', v('budget_subsidy') + ' 千元'),
-      blank(),
-      field('人事費（≦60%）', vv('budget_personnel','personnel') + ' 千元'),
-      field('消耗性器材費', vv('budget_materials','materials') + ' 千元'),
-      field('設備使用費', v('budget_equipment') + ' 千元'),
-      field('其他費用', v('other_cost') + ' 千元'),
-    ];
+    // ── 組合最終文件 ──
+    let body;
+    if (ph === 1) {
+      body = [...cover, ...secCompany, ...buildPhase1()];
+    } else if (ph === 2) {
+      body = [...cover, ...secCompany, ...buildPhase2()];
+    } else {
+      body = [...cover, ...secCompany, ...buildPhase2Plus()];
+    }
 
     const doc = new Document({
-      sections: [{
-        properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1260, bottom: 1440, left: 1260 } } },
-        children: [
-          ...cover, pageBreak(),
-          ...company, pageBreak(),
-          ...summary, pageBreak(),
-          ...content, pageBreak(),
-          ...ip, pageBreak(),
-          ...execution,
-        ]
+      styles:{
+        default:{
+          document:{run:{font:KAI,size:24}},
+          heading1:{run:{font:KAI}},
+          heading2:{run:{font:KAI}},
+        }
+      },
+      sections:[{
+        properties:{
+          page:{
+            size:{width:11906,height:16838},
+            margin:{top:1440,right:1260,bottom:1440,left:1440}
+          }
+        },
+        headers:{
+          default:new Header({children:[
+            new Paragraph({
+              children:[T('小型企業創新研發計畫　'+phaseName+'　'+planName,{size:18,color:'595959'})],
+              border:{bottom:{style:BorderStyle.SINGLE,size:4,color:'CCCCCC',space:4}}
+            })
+          ]})
+        },
+        footers:{
+          default:new Footer({children:[
+            new Paragraph({
+              children:[T('第 ',{size:18}),new TextRun({children:[PageNumber.CURRENT],font:KAI,size:18}),T(' 頁',{size:18})],
+              alignment:AlignmentType.CENTER
+            })
+          ]})
+        },
+        children:body
       }]
     });
 
-    // 使用 toBlob（瀏覽器相容）
     const blob = await Packer.toBlob(doc);
-    const url = URL.createObjectURL(blob);
+    const url  = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
-    const projectName = vv('plan_name','p2_name') !== '[待填寫]' ? vv('plan_name','p2_name') : '未命名計畫';
-    link.download = `SBIR_${phaseName}_${projectName}_${new Date().toISOString().slice(0,10)}.docx`;
+    link.href  = url;
+    link.download = `SBIR_${phaseName}_${planName}_${new Date().toISOString().slice(0,10)}.docx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
     btn.textContent = '✅ 已下載！';
-    setTimeout(() => {
-      btn.textContent = '📄 輸出 SBIR 計畫書 (.docx)';
-      btn.disabled = false;
-    }, 2500);
+    setTimeout(()=>{ btn.textContent='📄 輸出 SBIR 計畫書 (.docx)'; btn.disabled=false; }, 2500);
 
   } catch(e) {
     console.error('DOCX export error:', e);
-    alert('輸出失敗：' + e.message);
-    btn.textContent = '📄 輸出 SBIR 計畫書 (.docx)';
-    btn.disabled = false;
+    alert('輸出失敗：'+e.message);
+    btn.textContent = '📄 輸出 SBIR 計畫書 (.docx)'; btn.disabled = false;
   }
 }
 </script>
