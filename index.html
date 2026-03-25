@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-version" content="2.1.0">
+<meta name="app-version" content="2.0.0">
 <title>SBIR 計畫書撰寫助手</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
@@ -1312,7 +1312,7 @@ function closeSidebar() {
 // ══════════════════════════════════════════
 // ── VERSION CHECK & AUTO-UPDATE ──
 // ══════════════════════════════════════════
-const CURRENT_VERSION = '2.1.0';
+const CURRENT_VERSION = '2.0.0';
 const VERSION_KEY = 'sbir_app_version';
 
 function checkVersion() {
@@ -1440,20 +1440,16 @@ async function openFromFile() {
       });
       const file = await handle.getFile();
       const text = await file.text();
-      const project = JSON.parse(text);
-      if (!project.id || !project.name) throw new Error('格式不符');
-      // 避免 ID 衝突
-      project.id = generateProjectId();
-      project.name = project.name.replace(/（匯入\d*）$/, '') + '（匯入）';
-      project.updatedAt = new Date().toISOString();
+      const rawData = JSON.parse(text);
+      const project = _resolveImportedProject(rawData);
       const projects = loadProjects();
       projects.unshift(project);
       saveProjects(projects);
       switchProject(project.id);
-      _currentFileHandle = null; // 開啟的檔案不直接覆寫，需另存
+      _currentFileHandle = null; // 匯入的檔案不直接覆寫，需另存
       updateSaveStatus(`⬤ 已開啟：${file.name}`, 'saved');
     } catch (e) {
-      if (e.name !== 'AbortError') alert('開啟失敗，請確認為本工具儲存的 .json 檔案。');
+      if (e.name !== 'AbortError') alert('開啟失敗：無法識別的 JSON 格式。\n支援：①本工具匯出的 .json  ②官方SBIR計畫書轉換的 .json');
     }
   } else {
     // 降級：觸發隱藏 file input
@@ -1658,27 +1654,252 @@ function exportProject() {
   URL.revokeObjectURL(url);
 }
 
+// ── 官方 SBIR JSON 格式解析 ────────────────────────────────────────
+// 支援由官方 .docx 轉換而成的 JSON 格式（含 metadata + content.paragraphs）
+function parseOfficialSBIRJson(data) {
+  const ft = (data.content && data.content.full_text) || '';
+  const paras = (data.content && data.content.paragraphs) || [];
+  const texts = paras.map(p => (p.text || '').trim());
+
+  // 移除純說明性括號文字（指引/填寫說明）
+  const instructPat = /^[（(].{6,}[）)]$/;
+  function clean(s) {
+    if (!s) return '';
+    return s.split('\n').filter(line => {
+      const t = line.trim();
+      if (!t) return false;
+      if (instructPat.test(t)) return false;
+      return true;
+    }).join('\n').trim();
+  }
+
+  // 在 full_text 中取兩個錨點之間的文字
+  function between(startAnchor, endAnchor, maxChars) {
+    const si = ft.indexOf(startAnchor);
+    if (si === -1) return '';
+    const after = ft.slice(si + startAnchor.length);
+    const ei = endAnchor ? after.indexOf(endAnchor) : -1;
+    const raw = (ei > -1 ? after.slice(0, ei) : after.slice(0, maxChars || 3000)).trim();
+    return clean(raw);
+  }
+
+  // 取段落陣列中某標籤後面第一個有效文字
+  function paraAfter(label, startFrom) {
+    for (let i = (startFrom || 0); i < texts.length - 1; i++) {
+      if (texts[i] === label) {
+        for (let j = i + 1; j <= Math.min(i + 5, texts.length - 1); j++) {
+          const t = texts[j].trim();
+          if (t && !instructPat.test(t) && t !== label && t.length > 1) return { value: t, idx: j };
+        }
+      }
+    }
+    return { value: '', idx: -1 };
+  }
+
+  // ── Phase 偵測 ──────────────────────────────────────────────
+  let phase = 2; // 預設 Phase 2
+  // 掃描封面前幾段，找含打勾（■ ◼ ✅ ☑）的那行
+  const coverSlice = texts.slice(0, 20).join('\n');
+  if (/[■◼✅☑✔].*先期研究|先期研究.*[■◼✅☑✔]/.test(coverSlice)) { phase = 1; }
+  else if (/[■◼✅☑✔].*加值應用|加值應用.*[■◼✅☑✔]/.test(coverSlice)) { phase = 3; }
+  else if (/[■◼✅☑✔].*研究開發|研究開發.*[■◼✅☑✔]/.test(coverSlice)) { phase = 2; }
+  // 若無明確打勾，用期間長度推斷：≤6個月→Phase 1
+  if (!(/[■◼✅☑✔]/.test(coverSlice))) {
+    const dm = ft.match(/共\s*(\d+)\s*個月/);
+    if (dm && parseInt(dm[1]) <= 6) phase = 1;
+  }
+
+  const answers = {};
+
+  // ── 計畫申請表：計畫名稱 ────────────────────────────────────
+  const appTableIdx = texts.findIndex(t => t.includes('計畫申請表'));
+  if (appTableIdx > -1) {
+    const pnIdx = texts.findIndex((t, i) => i > appTableIdx && t === '計畫名稱');
+    if (pnIdx > -1 && texts[pnIdx + 1]) answers.plan_name = texts[pnIdx + 1].trim();
+  }
+  if (!answers.plan_name) answers.plan_name = paraAfter('計畫名稱').value;
+
+  // ── 執行期間 ──────────────────────────────────────────────────
+  const periodLine = texts.find(t => /\d+.*年.*月.*日至.*年.*月.*日/.test(t));
+  if (periodLine) answers.period = periodLine.replace(/　/g, '').replace(/\s+/g, ' ').trim();
+
+  // ── 公司名稱（優先從申請公司基本資料表抓）───────────────────
+  const basicTblIdx = texts.findIndex(t => t.includes('申請公司基本資料表'));
+  if (basicTblIdx > -1) {
+    const r = paraAfter('公司名稱', basicTblIdx);
+    if (r.value) answers.company_name = r.value;
+  }
+  if (!answers.company_name) {
+    const appSectIdx = texts.findIndex(t => t.includes('申請計畫基本資料'));
+    if (appSectIdx > -1) {
+      const r = paraAfter('公司名稱', appSectIdx);
+      if (r.value) answers.company_name = r.value;
+    }
+  }
+
+  // ── 計畫主持人 ───────────────────────────────────────────────
+  const appSect = texts.findIndex(t => t.includes('申請計畫基本資料'));
+  if (appSect > -1) {
+    const piIdx = texts.findIndex((t, i) => i > appSect && t === '計畫主持人');
+    if (piIdx > -1) {
+      for (let j = piIdx + 1; j <= piIdx + 4; j++) {
+        const t = (texts[j] || '').trim();
+        if (t && !t.includes('電話') && !t.includes('信箱') && !t.includes('聯絡') && t.length < 20) {
+          answers.pi_name = t; break;
+        }
+      }
+    }
+  }
+
+  // ── 申請公司基本資料表各欄位 ─────────────────────────────────
+  if (basicTblIdx > -1) {
+    answers.founded = paraAfter('創立日期', basicTblIdx).value;
+    const capRaw = paraAfter('實收資本額', basicTblIdx).value;
+    if (capRaw) answers.capital = capRaw.replace(/千元/,'').trim();
+    answers.business = paraAfter('主要營業項目', basicTblIdx).value;
+  }
+
+  // ── 計畫書摘要表 ─────────────────────────────────────────────
+  const sm = between('計畫內容摘要：\n', '計畫創新重點：');
+  if (sm) answers.summary = sm;
+  const ik = between('計畫創新重點：\n', '執行優勢：');
+  if (ik) answers.innov_key = ik;
+  const ea = between('執行優勢：\n', '預期效益：');
+  if (ea) answers.exec_adv = ea;
+
+  // ── 壹 公司概況（股東/財務不對應 app 欄位，略過）────────────
+
+  // ── 貳 計畫內容 ──────────────────────────────────────────────
+  const motiv = between('(一)研發動機：\n', '(二)競爭力分析');
+  if (motiv) answers.motivation = motiv;
+
+  const comp = between('(二)競爭力分析', '(三)可行性分析');
+  if (comp) answers.competitive = comp;
+
+  const feas = between('(三)可行性分析\n', '二、計畫目標與規格');
+  if (feas) answers.feasibility = feas;
+
+  const obj = between('(一)計畫目標\n', '(二)創新性說明');
+  if (obj) answers.objectives = obj;
+
+  const innDesc = between('(二)創新性說明\n', '(三)功能規格');
+  if (innDesc) answers.innovation_desc = innDesc;
+
+  const specs = between('(三)功能規格', '(四)主要關鍵技術');
+  if (specs) answers.specs = specs;
+
+  const method = between('(一)執行步驟及方法\n', '(二)技術及智慧財產權');
+  if (method) answers.method = method;
+
+  // 智財來源（Phase 2 後面接「四、聯合開發」，Phase 1 後面直接接「五、預期效益」）
+  const ipSrc = between('(二)技術及智慧財產權', '四、聯合開發') ||
+                between('(二)技術及智慧財產權', '五、預期效益');
+  if (ipSrc) answers.ip_source = ipSrc;
+
+  // FIX: use \n\n to skip TOC entry (which has \t10 between the title and newline)
+  const bene = between('五、預期效益\n\n', '參、智財分析\n\n');
+  if (bene) answers.benefits_detail = bene;
+
+  // Phase 2+：加值應用說明
+  const valueadd = between('(六)加值應用說明', '三、實施方式');
+  if (valueadd) answers.valueadd = valueadd;
+
+  // ── 參 智財分析 ───────────────────────────────────────────────
+  // FIX: use \n\n to skip TOC entry (which has \t11) and multi-company note (which has ：)
+  const ipAna = between('參、智財分析\n\n', '肆、計畫執行');
+  if (ipAna) answers.ip_analysis = ipAna;
+
+  // ── 肆 查核點 ─────────────────────────────────────────────────
+  const milRaw = between('(二)預定查核點說明\n', '二、參與計畫研發人員');
+  if (milRaw) {
+    answers.milestones = milRaw
+      .replace(/查核點編號\s*\n預定完成時間[^\n]*\n查核點內容\s*\n?/, '')
+      .trim();
+  }
+
+  // ── 伍 人力 ──────────────────────────────────────────────────
+  const piResume = between('(一) 計畫主持人資歷說明\n', '(二) 參與計畫研發人員');
+  if (piResume) answers.pi_bg = piResume;
+
+  const team = between('(二) 參與計畫研發人員資歷說明', '(三) 計畫研究發展人力統計');
+  if (team) answers.rnd_team = team;
+
+  // ── 陸/肆 經費 ────────────────────────────────────────────────
+  // 官方 JSON 表格序列化時，儲存格之間以 \n\n（雙換行）分隔
+  // 格式：合　　　計\n\n補助款\n\n自籌款\n\n總計
+  const totM = ft.match(/合　　　計\n\n([^\n]+)\n\n([^\n]+)\n\n([^\n]+)/);
+  if (totM) {
+    const toNum = s => s.replace(/[()（）千元,，\s]/g, '').trim();
+    answers.budget_subsidy = toNum(totM[1]);
+    answers.total_budget   = toNum(totM[3]);
+  }
+  // 人事費小計：小計\n\n補助\n\n自籌\n\n合計\n\n2. 消耗性
+  const perM = ft.match(/小計\n\n([^\n]+)\n\n([^\n]+)\n\n([^\n]+)\n\n2\.\s*消耗性/);
+  if (perM) answers.budget_personnel = perM[3].replace(/[()（）千元,，\s]/g, '').trim();
+
+  const matM = ft.match(/消耗性器材及原材料費\n\n([^\n]+)\n\n([^\n]+)\n\n([^\n]+)/);
+  if (matM) answers.budget_materials = matM[3].replace(/[()（）千元,，\s]/g, '').trim();
+
+  const equM = ft.match(/研發設備使用費\n\n([^\n]+)\n\n([^\n]+)\n\n([^\n]+)/);
+  if (equM) {
+    const val = equM[3].replace(/[()（）千元,，\s]/g, '').trim();
+    if (val) answers.budget_equipment = val;
+  }
+
+  // 刪除空值欄位
+  Object.keys(answers).forEach(k => {
+    const v = answers[k];
+    if (v === '' || v === undefined || v === null) delete answers[k];
+  });
+
+  const phaseLabels = { 1: 'P1', 2: 'P2', 3: 'P2+' };
+  return {
+    id: null, // 呼叫端補上
+    name: answers.plan_name || answers.company_name || 'SBIR計畫（官方格式匯入）',
+    phase,
+    answers,
+    currentStep: 0,
+    phaseLabel: phaseLabels[phase],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+// 判斷 JSON 格式並轉為 app 內部專案物件
+function _resolveImportedProject(rawData) {
+  // 官方 SBIR 格式：有 metadata 且有 content.paragraphs
+  if (rawData.metadata && rawData.content && Array.isArray(rawData.content.paragraphs)) {
+    const proj = parseOfficialSBIRJson(rawData);
+    proj.id = generateProjectId();
+    proj.name = proj.name + '（官方格式匯入）';
+    return proj;
+  }
+  // 本工具自身匯出格式：有 id 與 name
+  if (rawData.id && rawData.name) {
+    rawData.id = generateProjectId();
+    rawData.name = rawData.name.replace(/（匯入\d*）$/, '') + '（匯入）';
+    rawData.updatedAt = new Date().toISOString();
+    return rawData;
+  }
+  throw new Error('無法識別的 JSON 格式');
+}
+
 function importProject(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const project = JSON.parse(e.target.result);
-      if (!project.id || !project.name) throw new Error('格式不符');
-
-      // 避免 ID 衝突，重新產生 ID
-      project.id = generateProjectId();
-      project.name = project.name + '（匯入）';
-      project.updatedAt = new Date().toISOString();
-
+      const rawData = JSON.parse(e.target.result);
+      const project = _resolveImportedProject(rawData);
       const projects = loadProjects();
       projects.unshift(project);
       saveProjects(projects);
       switchProject(project.id);
-      alert(`已成功匯入專案「${project.name}」`);
-    } catch {
-      alert('匯入失敗，請確認檔案格式正確（需為本工具匯出的 JSON 檔案）。');
+      alert(`已成功匯入「${project.name}」`);
+    } catch (err) {
+      console.error('importProject error:', err);
+      alert('匯入失敗：無法識別的 JSON 格式。\n\n支援格式：\n① 本工具匯出的 .json 檔\n② 官方 SBIR 計畫書轉換的 .json 檔（需含 metadata 與 content.paragraphs 欄位）');
     }
   };
   reader.readAsText(file);
